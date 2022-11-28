@@ -158,6 +158,21 @@ return [
         'attribute-name' => [
             'rule-name' => 'custom-message',
         ],
+        'email' => [
+            'required' => 'Necesitamos que ingreses tu correo!',
+        ],
+        'password' => [
+            'required' => 'Necesitamos que ingreses tu contraseña!',
+        ],
+        'nombre' => [
+            'required' => 'Necesitamos que ingreses tu nombre!',
+        ],
+        'telefono' => [
+            'required' => 'Necesitamos que ingreses tu telefono!',
+        ],
+        'apellidos' => [
+            'required' => 'Necesitamos que ingreses tu apellidos!',
+        ],
     ],
 
     /*
