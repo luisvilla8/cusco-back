@@ -18,8 +18,7 @@ class AuthController extends Controller
         $validator = Validator::make($request->all(), [
             'nombre' => 'required|string|max:255',
             'apellidos' => 'required|string|max:255',
-            'id_tipo_usuario' => 'required|integer',
-            'telefono' => 'required|string',
+            'telefono' => 'required|string|max:9',
             'email' => 'required|string|email|unique:usuarios',
             'password' => 'required|string|min:6',
         ]);
@@ -29,7 +28,7 @@ class AuthController extends Controller
         $user = User::create([
             'nombre' => $request->nombre,
             'apellidos' => $request->apellidos,
-            'id_tipo_usuario' => $request->id_tipo_usuario,
+            'id_tipo_usuario' => 2,
             'telefono' => $request->telefono,
             'email' => $request->email,
             'password' => Hash::make($request->password),
@@ -50,13 +49,6 @@ class AuthController extends Controller
 
     public function login(Request $request)
     {
-
-        if (!Auth::attempt($request->only('email', 'password'))) {
-            return response()->json([
-                'message' => 'Unauthorized'
-            ], 401);
-        }
-
         $email = $request->email;
         $password = $request->password;
 
@@ -65,7 +57,7 @@ class AuthController extends Controller
             'password' => 'required|string',
         ]);
         if ($validator->fails()) {
-            return response()->json($validator->errors()->toJson(), 400);
+            return response()->json($validator->errors()->getMessages(), 400);
         }
 
         $user = User::where("email", $email)->firstOrFail();
@@ -99,6 +91,6 @@ class AuthController extends Controller
 
         return response()->json([
             'message' => 'Usuario deslogueado satisfactoriamente!'
-        ], 201);
+        ], 200);
     }
 }
