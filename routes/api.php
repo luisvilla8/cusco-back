@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\V1\UserController as UserV1;
 use App\Http\Controllers\Api\V1\AuthController as AuthV1;
 use App\Http\Controllers\Api\V1\ProductoController as ProductV1;
+use App\Http\Controllers\Api\V1\AgentController as AgentV1;
 
 /*
 |--------------------------------------------------------------------------
@@ -21,6 +22,8 @@ use App\Http\Controllers\Api\V1\ProductoController as ProductV1;
 Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
     Route::get('logout', [AuthV1::class, 'logout']);
     Route::apiResource('products', ProductV1::class)
+        ->only(['index', 'store', 'show', 'update', 'destroy']);
+    Route::apiResource('agents', AgentV1::class)
         ->only(['index', 'store', 'show', 'update', 'destroy']);
 });
 
