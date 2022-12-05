@@ -92,6 +92,7 @@ class ProductoController extends Controller
 
         return response()->json([
             "msg" => 'Producto no encontrado',
+            "data" => null
         ], 404);
     }
 

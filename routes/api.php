@@ -7,6 +7,8 @@ use App\Http\Controllers\Api\V1\UserController as UserV1;
 use App\Http\Controllers\Api\V1\AuthController as AuthV1;
 use App\Http\Controllers\Api\V1\ProductoController as ProductV1;
 use App\Http\Controllers\Api\V1\AgentController as AgentV1;
+use App\Http\Controllers\Api\V1\AgentTypeController as AgentTypeV1;
+use App\Http\Controllers\Api\V1\TransactionController as TransactionV1;
 
 /*
 |--------------------------------------------------------------------------
@@ -25,11 +27,15 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
         ->only(['index', 'store', 'show', 'update', 'destroy']);
     Route::apiResource('agents', AgentV1::class)
         ->only(['index', 'store', 'show', 'update', 'destroy']);
+    Route::apiResource('agents-types', AgentTypeV1::class)
+        ->only(['index', 'store', 'show', 'update', 'destroy']);
+    Route::apiResource('transactions', TransactionV1::class)
+        ->only(['index', 'store', 'show', 'update', 'destroy']);
 });
 
 Route::prefix('v1')->group(function () {
     Route::post('register', [AuthV1::class, 'register']);
     Route::post('login', [AuthV1::class, 'login']);
-    Route::apiResource('usuarios', UserV1::class)
+    Route::apiResource('users', UserV1::class)
         ->only(['index', 'store', 'show', 'update', 'destroy']);
 });
