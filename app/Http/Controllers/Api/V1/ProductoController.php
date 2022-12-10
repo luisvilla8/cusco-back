@@ -47,7 +47,6 @@ class ProductoController extends Controller
         $validator = Validator::make($request->all(), [
             'nombre' => 'required|string',
             'descripcion' => 'string',
-            'id_tipo_medida' => 'required|integer',
         ]);
         if ($validator->fails()) {
             return response()->json($validator->errors()->getMessages(), 400);
@@ -58,7 +57,7 @@ class ProductoController extends Controller
         $producto = Producto::create([
             "nombre" => $request->nombre,
             "descripcion" => $descripcion,
-            "id_tipo_medida" => $request->id_tipo_medida,
+            "id_tipo_medida" => $request->id_tipo_medida ?? 1,
             "cantidad" => 0,
             "costo" => 0,
             "precio" => 0,
