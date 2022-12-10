@@ -58,9 +58,9 @@ class ProductoController extends Controller
             "nombre" => $request->nombre,
             "descripcion" => $descripcion,
             "id_tipo_medida" => $request->id_tipo_medida ?? 1,
-            "cantidad" => 0,
-            "costo" => 0,
-            "precio" => 0,
+            "cantidad" => $request->cantidad ?? 0,
+            "costo" => $request->costo ?? 0,
+            "precio" => $request->precio ?? 0,
             'created_at' => now(),
             'updated_at' => now()
         ]);
