@@ -70,22 +70,49 @@ class UserController extends Controller
      * Update the specified resource in storage.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @param  \App\Models\Usuario  $usuario
+     * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, Usuario $usuario)
+    public function update(Request $request, $id)
     {
-        //
+        $user = User::find($id);
+        $user->nombre = $request->nombre ?? $user->nombre;
+        $user->apellidos = $request->apellidos ?? $user->apellidos;
+        $user->email = $request->email ?? $user->email;
+        $user->password = $request->password ?? $user->password;
+        $user->id_tipo_usuario = $request->id_tipo_usuario ?? $user->id_tipo_usuario;
+        $user->telefono = $request->telefono ?? $user->telefono;
+        $user->save();
+
+        if ($user) {
+            return response()->json([
+                "msg" => 'Usuario actualizado satisfactoriamente',
+                "data" => $user
+            ], 200);
+        }
+
+        return response()->json([
+            "msg" => 'Usuario no encontrado',
+        ], 404);
     }
 
     /**
      * Remove the specified resource from storage.
      *
-     * @param  \App\Models\Usuario  $usuario
+     * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function destroy(Usuario $usuario)
+    public function destroy($id)
     {
-        //
+        $user = User::find($id);
+        if ($user) {
+            $user->delete();
+            return response()->json([
+                "msg" => 'Usuario eliminado satisfactoriamente'
+            ], 200);
+        }
+        return response()->json([
+            "msg" => 'Usuario no encontrado',
+        ], 404);
     }
 }
