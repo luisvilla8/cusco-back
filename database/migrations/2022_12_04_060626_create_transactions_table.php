@@ -18,6 +18,7 @@ return new class extends Migration
 
             $table->integer("id_agente");
             $table->integer("id_tipo_transaccion");
+            $table->double("monto_pagado");
 
             $table->timestamps();
         });

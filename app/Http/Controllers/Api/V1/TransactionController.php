@@ -35,6 +35,7 @@ class TransactionController extends Controller
         $validator = Validator::make($request->all(), [
             "id_agente" => "required|integer",
             "items" => "required|array",
+            "monto_pagado" => "required|numeric",
         ]);
         if ($validator->fails()) {
             return response()->json($validator->errors()->getMessages(), 400);
@@ -43,19 +44,18 @@ class TransactionController extends Controller
         $agent = Agent::find($request->id_agente);
         $transactionType = TransactionType::getTransactionTypeByAgentType($request->id_agente);
         foreach ($request->items as $item) {
-            $transactionDetailId = TransactionController::saveTransactionDetail($item, $transactionType);
-            if ($transactionDetailId) {
-                TransactionController::saveTransactionPayment($transactionDetailId, $item['monto_pagado']);
-            }
+            TransactionController::saveTransactionDetail($item, $transactionType);
         }
         $transaction = Transaction::create([
             "id_agente" => $agent->id,
             "id_tipo_transaccion" => $transactionType->id,
+            "monto_pagado" => $request->monto_pagado ?? 0,
             'created_at' => now(),
             'updated_at' => now()
         ]);
-
         $transaction->save();
+        
+        TransactionController::saveTransactionPayment($transaction->id, $request->monto_pagado);
         return response()->json([
             "status" => 1,
             "msg" => "¡Registro de transaction exitoso!",
@@ -114,12 +114,12 @@ class TransactionController extends Controller
             return $transactionDetailId;
         }
     }
-    public function saveTransactionPayment($transactionDetailId, $payment)
+    public function saveTransactionPayment($transactionId, $payment)
     {
         $paymentRequest = new Request();
         $paymentRequest->setMethod('POST');
         $paymentRequest->request->add([
-            'id_transaccion_detalle' => $transactionDetailId,
+            'id_transaccion' => $transactionId,
             'monto_pagado' => $payment,
         ]);
         return (new TransactionPaymentController)->store($paymentRequest);

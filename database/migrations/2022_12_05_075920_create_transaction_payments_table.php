@@ -16,7 +16,7 @@ return new class extends Migration
         Schema::create('transaction_payments', function (Blueprint $table) {
             $table->id();
 
-            $table->integer('id_transaccion_detalle');
+            $table->integer('id_transaccion');
             $table->double('monto_pagado');
 
             $table->timestamps();

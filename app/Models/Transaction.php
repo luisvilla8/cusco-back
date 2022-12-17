@@ -13,6 +13,7 @@ class Transaction extends Model
 
     protected $fillable = [
         "id_agente",
-        "id_tipo_transaccion"
+        "id_tipo_transaccion",
+        "monto_pagado"
     ];
 }

@@ -28,7 +28,7 @@ class TransactionPaymentController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'id_transaccion_detalle' => 'required|integer',
+            'id_transaccion' => 'required|integer',
             'monto_pagado' => 'required|numeric',
         ]);
         if ($validator->fails()) {
@@ -36,7 +36,7 @@ class TransactionPaymentController extends Controller
         }
 
         $payment = TransactionPayment::create([
-            'id_transaccion_detalle' => $request->id_transaccion_detalle,
+            'id_transaccion' => $request->id_transaccion,
             'monto_pagado' => $request->monto_pagado,
             'created_at' => now(),
             'updated_at' => now()
