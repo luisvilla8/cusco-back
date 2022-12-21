@@ -19,9 +19,24 @@ class TransactionController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
-    public function index()
+    public function index(Request $request)
     {
-        //
+        $type = $request->type ? $request->type : "";
+        if (!$type) {
+            $agents = Transaction::all();
+            return response()->json([
+                "status" => 1,
+                "msg" => "OK, lista de transacciones",
+                "data" => $agents,
+            ], 200);
+        }
+        $transactions = Transaction::where('id_tipo_transaccion', (int)$type)->get();
+        return response()->json([
+            "status" => 1,
+            "msg" => "OK, lista de transacciones",
+            "data" => $transactions,
+        ], 200);
+        
     }
 
     /**
