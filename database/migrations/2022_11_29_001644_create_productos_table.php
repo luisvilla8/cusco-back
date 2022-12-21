@@ -17,6 +17,7 @@ return new class extends Migration
             $table->id();
 
             $table->string("nombre");
+            $table->string("url_imagen");
             $table->integer("id_tipo_medida");
             $table->string("descripcion");
             $table->double("cantidad");

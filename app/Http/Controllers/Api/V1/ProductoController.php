@@ -56,6 +56,7 @@ class ProductoController extends Controller
 
         $producto = Producto::create([
             "nombre" => $request->nombre,
+            "url_imagen" => $request->url_imagen ?? "",
             "descripcion" => $descripcion,
             "id_tipo_medida" => $request->id_tipo_medida ?? 1,
             "cantidad" => $request->cantidad ?? 0,
@@ -116,6 +117,7 @@ class ProductoController extends Controller
     {
         $producto = Producto::find($id);
         $producto->nombre = $request->nombre ?? $producto->nombre;
+        $producto->url_imagen = $request->url_imagen ?? $producto->url_imagen;
         $producto->id_tipo_medida = $request->id_tipo_medida ?? $producto->id_tipo_medida;
         $producto->descripcion = $request->descripcion ?? $producto->descripcion;
         $producto->cantidad = $request->cantidad ?? $producto->cantidad;
