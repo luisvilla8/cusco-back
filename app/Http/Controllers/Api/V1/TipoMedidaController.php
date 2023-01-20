@@ -1,7 +1,8 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Api\V1;
 
+use App\Http\Controllers\Controller;
 use App\Models\TipoMedida;
 use Illuminate\Http\Request;
 
@@ -15,6 +16,16 @@ class TipoMedidaController extends Controller
     public function index()
     {
         //
+    }
+
+    public function list()
+    {
+        $tipos = TipoMedida::all();
+        return response()->json([
+            "status" => 1,
+            "msg" => "¡Lista de tipos de medida!",
+            "data" => $tipos
+        ], 200);
     }
 
     /**
