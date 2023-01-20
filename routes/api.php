@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\V1\ProductoController as ProductV1;
 use App\Http\Controllers\Api\V1\AgentController as AgentV1;
 use App\Http\Controllers\Api\V1\AgentTypeController as AgentTypeV1;
 use App\Http\Controllers\Api\V1\TransactionController as TransactionV1;
+use App\Http\Controllers\Api\V1\TipoMedidaController as MeasureTypeV1;
 
 /*
 |--------------------------------------------------------------------------
@@ -27,6 +28,7 @@ Route::prefix('v1')->group(function () {
     Route::apiResource('users', UserV1::class)
         ->only(['index', 'store', 'show', 'update', 'destroy']);
     Route::get('products', [ProductV1::class, 'index']);
+    Route::get('measure-types', [MeasureTypeV1::class, 'list']);
 });
 
 Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
