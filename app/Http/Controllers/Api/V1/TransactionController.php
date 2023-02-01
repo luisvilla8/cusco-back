@@ -57,7 +57,7 @@ class TransactionController extends Controller
         }
 
         $agent = Agent::find($request->id_agente);
-        $transactionType = TransactionType::getTransactionTypeByAgentType($request->id_agente);
+        $transactionType = TransactionType::getTransactionTypeByAgentType($agent->id_tipo_agente);
         foreach ($request->items as $item) {
             TransactionController::saveTransactionDetail($item, $transactionType);
         }
