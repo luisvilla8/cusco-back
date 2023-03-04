@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Models\Agent;
 use App\Http\Controllers\Controller;
+use App\Util\Sunat;
 use Illuminate\Http\Request;
 use Validator;
 
@@ -145,5 +146,51 @@ class AgentController extends Controller
         return response()->json([
             "msg" => 'Agente no encontrado',
         ], 404);
+    }
+
+    /**
+     * Remove the specified resource from storage.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  int  $ruc
+     * @return \Illuminate\Http\Response
+     */
+    public function fetchRUC(Request $request, $ruc)
+    {
+        $newRequest = $request->all();
+        $newRequest['ruc'] = $ruc;
+        $validator = Validator::make($newRequest, [
+            "ruc" => "required|string|min:11|max:11",
+        ]);
+        if ($validator->fails()) {
+            return response()->json($validator->errors()->getMessages(), 400);
+        }
+
+        $sunat = new Sunat();
+        $data = $sunat->fetchAgentByRUC($ruc);
+
+        return response()->json([
+            "msg" => 'Agente encontrado',
+            "data" => $data,
+        ], 200);
+    }
+    public function fetchDNI(Request $request, $dni)
+    {
+        $newRequest = $request->all();
+        $newRequest['dni'] = $dni;
+        $validator = Validator::make($newRequest, [
+            "dni" => "required|string|min:8|max:8",
+        ]);
+        if ($validator->fails()) {
+            return response()->json($validator->errors()->getMessages(), 400);
+        }
+
+        $sunat = new Sunat();
+        $data = $sunat->fetchAgentByDNI($dni);
+
+        return response()->json([
+            "msg" => 'Agente encontrado',
+            "data" => $data,
+        ], 200);
     }
 }
