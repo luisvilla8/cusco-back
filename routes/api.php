@@ -37,6 +37,8 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
         ->only(['store', 'show', 'update', 'destroy']);
     Route::apiResource('agents', AgentV1::class)
         ->only(['index', 'store', 'show', 'update', 'destroy']);
+    Route::get('agents/fetchRUC/{ruc}', [AgentV1::class, 'fetchRUC']);
+    Route::get('agents/fetchDNI/{ruc}', [AgentV1::class, 'fetchDNI']);
     Route::apiResource('agents-types', AgentTypeV1::class)
         ->only(['index', 'store', 'show', 'update', 'destroy']);
     Route::apiResource('transactions', TransactionV1::class)
