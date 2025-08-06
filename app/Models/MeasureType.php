@@ -9,6 +9,39 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+/**
+ * App\Models\MeasureType
+ *
+ * @property int $id
+ * @property string $name
+ * @property string $symbol
+ * @property string|null $description
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property-read string $display_name
+ * @property-read int|null $products_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Product> $products
+ * @method static Builder|MeasureType active()
+ * @method static Builder|MeasureType byName(string $name)
+ * @method static Builder|MeasureType bySymbol(string $symbol)
+ * @method static Builder|MeasureType newModelQuery()
+ * @method static Builder|MeasureType newQuery()
+ * @method static Builder|MeasureType onlyTrashed()
+ * @method static Builder|MeasureType query()
+ * @method static Builder|MeasureType search(string $search)
+ * @method static Builder|MeasureType whereCreatedAt($value)
+ * @method static Builder|MeasureType whereDeletedAt($value)
+ * @method static Builder|MeasureType whereDescription($value)
+ * @method static Builder|MeasureType whereId($value)
+ * @method static Builder|MeasureType whereName($value)
+ * @method static Builder|MeasureType whereSymbol($value)
+ * @method static Builder|MeasureType whereUpdatedAt($value)
+ * @method static Builder|MeasureType withProductsCount()
+ * @method static Builder|MeasureType withTrashed()
+ * @method static Builder|MeasureType withoutTrashed()
+ * @mixin \Eloquent
+ */
 class MeasureType extends Model
 {
     use HasFactory, SoftDeletes;

@@ -10,6 +10,52 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * App\Models\UserZone
+ *
+ * @property int $id
+ * @property int $user_id
+ * @property int $zone_id
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property-read string $assignment_info
+ * @property-read string $display_name
+ * @property-read bool $has_active_user
+ * @property-read bool $has_active_zone
+ * @property-read bool $is_active
+ * @property-read bool $is_fully_active
+ * @property-read string $user_code
+ * @property-read string $user_name
+ * @property-read string $zone_code
+ * @property-read string $zone_name
+ * @property-read \App\Models\User $user
+ * @property-read \App\Models\Zone $zone
+ * @method static Builder|UserZone active()
+ * @method static Builder|UserZone byUser(int $userId)
+ * @method static Builder|UserZone byUserAndZone(int $userId, int $zoneId)
+ * @method static Builder|UserZone byZone(int $zoneId)
+ * @method static Builder|UserZone fullyActive()
+ * @method static Builder|UserZone newModelQuery()
+ * @method static Builder|UserZone newQuery()
+ * @method static Builder|UserZone onlyTrashed()
+ * @method static Builder|UserZone orderByUser(string $direction = 'asc')
+ * @method static Builder|UserZone orderByZone(string $direction = 'asc')
+ * @method static Builder|UserZone query()
+ * @method static Builder|UserZone search(string $search)
+ * @method static Builder|UserZone whereCreatedAt($value)
+ * @method static Builder|UserZone whereDeletedAt($value)
+ * @method static Builder|UserZone whereId($value)
+ * @method static Builder|UserZone whereUpdatedAt($value)
+ * @method static Builder|UserZone whereUserId($value)
+ * @method static Builder|UserZone whereZoneId($value)
+ * @method static Builder|UserZone withActiveUsers()
+ * @method static Builder|UserZone withActiveZones()
+ * @method static Builder|UserZone withRelations()
+ * @method static Builder|UserZone withTrashed()
+ * @method static Builder|UserZone withoutTrashed()
+ * @mixin \Eloquent
+ */
 class UserZone extends Model
 {
     use HasFactory, SoftDeletes;

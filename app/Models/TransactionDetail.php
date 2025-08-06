@@ -7,7 +7,67 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Log;
 
+/**
+ * App\Models\TransactionDetail
+ *
+ * @property int $id
+ * @property int $product_id
+ * @property int $transaction_id
+ * @property string $price
+ * @property string $quantity
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property-read float $cost_difference
+ * @property-read string $display_name
+ * @property-read string $formatted_price
+ * @property-read string $formatted_quantity
+ * @property-read string $formatted_subtotal
+ * @property-read bool $is_discounted
+ * @property-read bool $is_premium_price
+ * @property-read bool $is_profitable
+ * @property-read float $price_difference_from_base
+ * @property-read string $product_code
+ * @property-read string $product_name
+ * @property-read float $profit_margin
+ * @property-read float $profit_per_unit
+ * @property-read float $subtotal
+ * @property-read float $total_profit
+ * @property-read string $transaction_code
+ * @property-read \App\Models\Product $product
+ * @property-read \App\Models\Transaction $transaction
+ * @method static Builder|TransactionDetail active()
+ * @method static Builder|TransactionDetail byProduct(int $productId)
+ * @method static Builder|TransactionDetail byProductAndTransaction(int $productId, int $transactionId)
+ * @method static Builder|TransactionDetail byTransaction(int $transactionId)
+ * @method static Builder|TransactionDetail highestQuantities(int $limit = 10)
+ * @method static Builder|TransactionDetail highestSubtotals(int $limit = 10)
+ * @method static Builder|TransactionDetail newModelQuery()
+ * @method static Builder|TransactionDetail newQuery()
+ * @method static Builder|TransactionDetail onlyTrashed()
+ * @method static Builder|TransactionDetail orderByPrice(string $direction = 'desc')
+ * @method static Builder|TransactionDetail orderByQuantity(string $direction = 'desc')
+ * @method static Builder|TransactionDetail orderBySubtotal(string $direction = 'desc')
+ * @method static Builder|TransactionDetail priceRange(?float $minPrice = null, ?float $maxPrice = null)
+ * @method static Builder|TransactionDetail quantityRange(?float $minQuantity = null, ?float $maxQuantity = null)
+ * @method static Builder|TransactionDetail query()
+ * @method static Builder|TransactionDetail search(string $search)
+ * @method static Builder|TransactionDetail subtotalRange(?float $minSubtotal = null, ?float $maxSubtotal = null)
+ * @method static Builder|TransactionDetail whereCreatedAt($value)
+ * @method static Builder|TransactionDetail whereDeletedAt($value)
+ * @method static Builder|TransactionDetail whereId($value)
+ * @method static Builder|TransactionDetail wherePrice($value)
+ * @method static Builder|TransactionDetail whereProductId($value)
+ * @method static Builder|TransactionDetail whereQuantity($value)
+ * @method static Builder|TransactionDetail whereTransactionId($value)
+ * @method static Builder|TransactionDetail whereUpdatedAt($value)
+ * @method static Builder|TransactionDetail withRelations()
+ * @method static Builder|TransactionDetail withTrashed()
+ * @method static Builder|TransactionDetail withoutTrashed()
+ * @mixin \Eloquent
+ */
 class TransactionDetail extends Model
 {
     use HasFactory, SoftDeletes;
@@ -340,74 +400,357 @@ class TransactionDetail extends Model
     {
         parent::boot();
 
-        // Validación antes de crear
+        // ✅ ELIMINAR VALIDACIÓN DE DUPLICADOS EN UPDATE
         static::creating(function ($detail) {
             // Verificar que el producto existe
             if (!Product::find($detail->product_id)) {
-                throw new \InvalidArgumentException('El producto especificado no existe');
+                throw new \InvalidArgumentException('El producto especificado no existe.');
             }
 
             // Verificar que la transacción existe
             if (!Transaction::find($detail->transaction_id)) {
-                throw new \InvalidArgumentException('La transacción especificada no existe');
+                throw new \InvalidArgumentException('La transacción especificada no existe.');
             }
+
+            // ✅ REMOVER VALIDACIÓN DE DUPLICADOS - PERMITIR MÚLTIPLES DETALLES DEL MISMO PRODUCTO
+            // No validar unicidad porque en updates se recrean los detalles
         });
 
         // Validación antes de guardar
         static::saving(function ($detail) {
-            // Validar que price y quantity sean positivos
             if ($detail->price <= 0) {
-                throw new \InvalidArgumentException('El precio debe ser mayor a 0');
+                throw new \InvalidArgumentException('El precio debe ser mayor a 0.');
             }
 
             if ($detail->quantity <= 0) {
-                throw new \InvalidArgumentException('La cantidad debe ser mayor a 0');
-            }
-
-            // Validar unicidad de product_id + transaction_id
-            $duplicateExists = static::where('product_id', $detail->product_id)
-                ->where('transaction_id', $detail->transaction_id)
-                ->when($detail->exists, function ($query) use ($detail) {
-                    return $query->where('id', '!=', $detail->id);
-                })
-                ->whereNull('deleted_at')
-                ->exists();
-
-            if ($duplicateExists) {
-                throw new \InvalidArgumentException('Ya existe un detalle para este producto en esta transacción');
+                throw new \InvalidArgumentException('La cantidad debe ser mayor a 0.');
             }
         });
 
-        // Actualizar stock después de crear (para ventas)
+        // ✅ EVENTOS DE STOCK (mantener los existentes pero mejorar logging)
         static::created(function ($detail) {
-            // Si la transacción es una venta, reducir stock
-            if ($detail->transaction && $detail->transaction->transaction_type_id) {
-                $transactionType = $detail->transaction->transactionType;
-                if ($transactionType && $transactionType->code === 'SALE') {
-                    $detail->updateStock('subtract');
-                }
-            }
-        });
-
-        // Logging cuando se crea un detalle
-        static::created(function ($detail) {
-            \Log::info("TransactionDetail created", [
-                'product_id' => $detail->product_id,
+            Log::info('TransactionDetail created', [
+                'detail_id' => $detail->id,
                 'transaction_id' => $detail->transaction_id,
-                'quantity' => $detail->quantity,
+                'product_id' => $detail->product_id,
                 'price' => $detail->price,
-                'subtotal' => $detail->subtotal
+                'quantity' => $detail->quantity
             ]);
+            
+            $detail->handleStockOnCreate();
         });
 
-        // Restaurar stock si se elimina (para ventas)
         static::deleted(function ($detail) {
-            if ($detail->transaction && $detail->transaction->transaction_type_id) {
-                $transactionType = $detail->transaction->transactionType;
-                if ($transactionType && $transactionType->code === 'SALE') {
-                    $detail->updateStock('add');
-                }
+            Log::info('TransactionDetail deleted', [
+                'detail_id' => $detail->id,
+                'transaction_id' => $detail->transaction_id,
+                'product_id' => $detail->product_id
+            ]);
+            
+            $detail->handleStockOnDelete();
+        });
+
+        static::updated(function ($detail) {
+            if ($detail->isDirty('quantity')) {
+                Log::info('TransactionDetail quantity updated', [
+                    'detail_id' => $detail->id,
+                    'old_quantity' => $detail->getOriginal('quantity'),
+                    'new_quantity' => $detail->quantity
+                ]);
+                
+                $detail->handleStockOnUpdate();
             }
         });
+    }
+
+    // ✅ MÉTODO CORREGIDO PARA MANEJAR STOCK AL CREAR
+    public function handleStockOnCreate(): void
+    {
+        $transaction = $this->transaction;
+        $product = $this->product;
+        
+        if (!$transaction || !$product) {
+            Log::warning('Cannot handle stock: missing transaction or product', [
+                'detail_id' => $this->id,
+                'transaction_id' => $this->transaction_id,
+                'product_id' => $this->product_id
+            ]);
+            return;
+        }
+
+        $transactionType = $transaction->transactionType?->code;
+        
+        Log::info('Handling stock on create', [
+            'detail_id' => $this->id,
+            'transaction_type' => $transactionType,
+            'product_id' => $this->product_id,
+            'quantity' => $this->quantity,
+            'delivery_status' => $transaction->delivery_status,
+            'stock_before' => $product->stock
+        ]);
+
+        // ✅ MANEJAR SEGÚN TIPO DE TRANSACCIÓN
+        switch ($transactionType) {
+            case 'SALE':
+                // VENTA: Reducir stock cuando se entrega
+                if ($transaction->delivery_status === 'DELIVERED') {
+                    $this->reduceStock();
+                    Log::info('Stock reduced for delivered sale', [
+                        'product_id' => $this->product_id,
+                        'quantity_reduced' => $this->quantity,
+                        'new_stock' => $product->fresh()->stock
+                    ]);
+                } else {
+                    Log::info('Sale not delivered yet, stock not affected', [
+                        'delivery_status' => $transaction->delivery_status
+                    ]);
+                }
+                break;
+
+            case 'PURCHASE':
+                // COMPRA: Aumentar stock cuando se recibe
+                if ($transaction->delivery_status === 'DELIVERED') {
+                    $this->addStock();
+                    Log::info('Stock increased for received purchase', [
+                        'product_id' => $this->product_id,
+                        'quantity_added' => $this->quantity,
+                        'new_stock' => $product->fresh()->stock
+                    ]);
+                } else {
+                    Log::info('Purchase not received yet, stock not affected', [
+                        'delivery_status' => $transaction->delivery_status
+                    ]);
+                }
+                break;
+
+            case 'RETURN_SALE':
+                // DEVOLUCIÓN DE VENTA: Restaurar stock inmediatamente
+                $this->addStock();
+                Log::info('Stock restored for sale return', [
+                    'product_id' => $this->product_id,
+                    'quantity_restored' => $this->quantity,
+                    'new_stock' => $product->fresh()->stock
+                ]);
+                break;
+
+            case 'RETURN_PURCHASE':
+                // DEVOLUCIÓN DE COMPRA: Reducir stock inmediatamente
+                $this->reduceStock();
+                Log::info('Stock reduced for purchase return', [
+                    'product_id' => $this->product_id,
+                    'quantity_reduced' => $this->quantity,
+                    'new_stock' => $product->fresh()->stock
+                ]);
+                break;
+
+            default:
+                Log::info('No stock handling for transaction type', [
+                    'transaction_type' => $transactionType
+                ]);
+                break;
+        }
+    }
+
+    // ✅ MÉTODO CORREGIDO PARA MANEJAR STOCK AL ELIMINAR
+    public function handleStockOnDelete(): void
+    {
+        $transaction = $this->transaction;
+        $product = $this->product;
+        
+        if (!$transaction || !$product) {
+            Log::warning('Cannot handle stock on delete: missing transaction or product', [
+                'detail_id' => $this->id
+            ]);
+            return;
+        }
+
+        $transactionType = $transaction->transactionType?->code;
+        
+        Log::info('Handling stock on delete', [
+            'detail_id' => $this->id,
+            'transaction_type' => $transactionType,
+            'delivery_status' => $transaction->delivery_status,
+            'stock_before' => $product->stock
+        ]);
+
+        // ✅ REVERTIR OPERACIÓN SEGÚN TIPO DE TRANSACCIÓN
+        switch ($transactionType) {
+            case 'SALE':
+                if ($transaction->delivery_status === 'DELIVERED') {
+                    // Restaurar stock que se había reducido
+                    $this->addStock();
+                    Log::info('Stock restored after deleting delivered sale detail');
+                }
+                break;
+
+            case 'PURCHASE':
+                if ($transaction->delivery_status === 'DELIVERED') {
+                    // Reducir stock que se había aumentado
+                    $this->reduceStock();
+                    Log::info('Stock reduced after deleting received purchase detail');
+                }
+                break;
+
+            case 'RETURN_SALE':
+                // Revertir la restauración: reducir stock
+                $this->reduceStock();
+                Log::info('Stock reduced after deleting sale return detail');
+                break;
+
+            case 'RETURN_PURCHASE':
+                // Revertir la reducción: restaurar stock
+                $this->addStock();
+                Log::info('Stock restored after deleting purchase return detail');
+                break;
+
+            default:
+                Log::info('No stock reversion needed for transaction type', [
+                    'transaction_type' => $transactionType
+                ]);
+                break;
+        }
+    }
+
+    // ✅ NUEVO MÉTODO PARA MANEJAR STOCK AL ACTUALIZAR
+    public function handleStockOnUpdate(): void
+    {
+        $transaction = $this->transaction;
+        $product = $this->product;
+        
+        if (!$transaction || !$product) {
+            return;
+        }
+
+        $transactionType = $transaction->transactionType?->code;
+        $oldQuantity = $this->getOriginal('quantity');
+        $newQuantity = $this->quantity;
+        $quantityDifference = $newQuantity - $oldQuantity;
+
+        Log::info('Handling stock on quantity update', [
+            'detail_id' => $this->id,
+            'transaction_type' => $transactionType,
+            'old_quantity' => $oldQuantity,
+            'new_quantity' => $newQuantity,
+            'difference' => $quantityDifference
+        ]);
+
+        if ($quantityDifference == 0) {
+            return; // No hay cambio en cantidad
+        }
+
+        // ✅ APLICAR DIFERENCIA SEGÚN TIPO DE TRANSACCIÓN
+        switch ($transactionType) {
+            case 'SALE':
+                if ($transaction->delivery_status === 'DELIVERED') {
+                    // Si se aumentó cantidad, reducir más stock. Si se redujo, restaurar stock.
+                    $this->adjustStock(-$quantityDifference);
+                }
+                break;
+
+            case 'PURCHASE':
+                if ($transaction->delivery_status === 'DELIVERED') {
+                    // Si se aumentó cantidad, aumentar más stock. Si se redujo, reducir stock.
+                    $this->adjustStock($quantityDifference);
+                }
+                break;
+
+            case 'RETURN_SALE':
+                // Ajustar restauración de stock
+                $this->adjustStock($quantityDifference);
+                break;
+
+            case 'RETURN_PURCHASE':
+                // Ajustar reducción de stock
+                $this->adjustStock(-$quantityDifference);
+                break;
+        }
+    }
+
+    // ✅ MÉTODOS AUXILIARES PARA MANEJO DE STOCK
+    private function addStock(): void
+    {
+        $product = $this->product;
+        if (!$product) return;
+
+        $product->updateStock($this->quantity, 'ADD');
+        
+        Log::info('Stock increased for product', [
+            'product_id' => $this->product_id,
+            'product_code' => $product->code,
+            'quantity_added' => $this->quantity,
+            'new_stock' => $product->fresh()->stock
+        ]);
+    }
+
+    private function reduceStock(): void
+    {
+        $product = $this->product;
+        if (!$product) return;
+
+        $product->updateStock($this->quantity, 'SUBTRACT');
+        
+        Log::info('Stock reduced for product', [
+            'product_id' => $this->product_id,
+            'product_code' => $product->code,
+            'quantity_reduced' => $this->quantity,
+            'new_stock' => $product->fresh()->stock
+        ]);
+    }
+
+    private function adjustStock(float $quantityDifference): void
+    {
+        if ($quantityDifference == 0) return;
+
+        $product = $this->product;
+        if (!$product) return;
+
+        $operation = $quantityDifference > 0 ? 'ADD' : 'SUBTRACT';
+        $product->updateStock(abs($quantityDifference), $operation);
+        
+        Log::info('Stock adjusted for product', [
+            'product_id' => $this->product_id,
+            'product_code' => $product->code,
+            'quantity_difference' => $quantityDifference,
+            'operation' => $operation,
+            'new_stock' => $product->fresh()->stock
+        ]);
+    }
+
+    // ✅ MÉTODO PARA VERIFICAR SI ES TRANSACCIÓN DE VENTA
+    private function isSaleTransaction(): bool
+    {
+        return $this->transaction?->transactionType?->code === 'SALE';
+    }
+
+    // ✅ MÉTODO PARA CONFIRMAR RESERVA (CONVERTIR RESERVA EN VENTA REAL)
+    public function confirmReservation(): void
+    {
+        if (!$this->isSaleTransaction()) {
+            return;
+        }
+        
+        $product = $this->product;
+        
+        // Reducir stock real y liberar reserva
+        if ($product->stock >= $this->quantity && $product->reserved_stock >= $this->quantity) {
+            $product->decrement('stock', $this->quantity);
+            $product->decrement('reserved_stock', $this->quantity);
+            
+            Log::info('Reservation confirmed', [
+                'product_id' => $this->product_id,
+                'quantity' => $this->quantity,
+                'remaining_stock' => $product->stock,
+                'remaining_reserved' => $product->reserved_stock
+            ]);
+        } else {
+            Log::error('Cannot confirm reservation - insufficient stock or reserved stock', [
+                'product_id' => $this->product_id,
+                'quantity_needed' => $this->quantity,
+                'available_stock' => $product->stock,
+                'reserved_stock' => $product->reserved_stock
+            ]);
+            
+            throw new \InvalidArgumentException('No se puede confirmar la reserva por stock insuficiente');
+        }
     }
 }

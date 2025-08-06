@@ -9,6 +9,73 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+/**
+ * App\Models\Egress
+ *
+ * @property int $id
+ * @property string $code
+ * @property string $name
+ * @property string|null $description
+ * @property string $amount
+ * @property \Illuminate\Support\Carbon $date
+ * @property int|null $agent_id
+ * @property int|null $trip_id
+ * @property int|null $zone_id
+ * @property int|null $transaction_id
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property-read \App\Models\Agent|null $agent
+ * @property-read string $context_info
+ * @property-read string $display_name
+ * @property-read string $egress_type
+ * @property-read string $formatted_amount
+ * @property-read string $formatted_date
+ * @property-read bool $is_recent
+ * @property-read bool $is_this_month
+ * @property-read string|null $related_entity_name
+ * @property-read \App\Models\Transaction|null $transaction
+ * @property-read \App\Models\Trip|null $trip
+ * @property-read \App\Models\Zone|null $zone
+ * @method static Builder|Egress active()
+ * @method static Builder|Egress amountRange(?float $minAmount = null, ?float $maxAmount = null)
+ * @method static Builder|Egress byAgent(int $agentId)
+ * @method static Builder|Egress byCode(string $code)
+ * @method static Builder|Egress byDate(string $date)
+ * @method static Builder|Egress byMonth(int $month, ?int $year = null)
+ * @method static Builder|Egress byTransaction(int $transactionId)
+ * @method static Builder|Egress byTrip(int $tripId)
+ * @method static Builder|Egress byYear(int $year)
+ * @method static Builder|Egress byZone(int $zoneId)
+ * @method static Builder|Egress dateRange(string $startDate, string $endDate)
+ * @method static Builder|Egress newModelQuery()
+ * @method static Builder|Egress newQuery()
+ * @method static Builder|Egress onlyTrashed()
+ * @method static Builder|Egress orderByAmount(string $direction = 'desc')
+ * @method static Builder|Egress orderByDate(string $direction = 'desc')
+ * @method static Builder|Egress query()
+ * @method static Builder|Egress recent(int $days = 30)
+ * @method static Builder|Egress search(string $search)
+ * @method static Builder|Egress thisMonth()
+ * @method static Builder|Egress thisYear()
+ * @method static Builder|Egress whereAgentId($value)
+ * @method static Builder|Egress whereAmount($value)
+ * @method static Builder|Egress whereCode($value)
+ * @method static Builder|Egress whereCreatedAt($value)
+ * @method static Builder|Egress whereDate($value)
+ * @method static Builder|Egress whereDeletedAt($value)
+ * @method static Builder|Egress whereDescription($value)
+ * @method static Builder|Egress whereId($value)
+ * @method static Builder|Egress whereName($value)
+ * @method static Builder|Egress whereTransactionId($value)
+ * @method static Builder|Egress whereTripId($value)
+ * @method static Builder|Egress whereUpdatedAt($value)
+ * @method static Builder|Egress whereZoneId($value)
+ * @method static Builder|Egress withRelations()
+ * @method static Builder|Egress withTrashed()
+ * @method static Builder|Egress withoutTrashed()
+ * @mixin \Eloquent
+ */
 class Egress extends Model
 {
     use HasFactory, SoftDeletes;
@@ -327,7 +394,7 @@ class Egress extends Model
             ->sum('amount');
     }
 
-    // ✅ VALIDACIONES EN EVENTOS DEL MODELO
+    // ✅ VALIDACIONES EN EVENTOS DEL MODELO - CORREGIDAS
     protected static function boot()
     {
         parent::boot();
@@ -367,10 +434,20 @@ class Egress extends Model
                 throw new \InvalidArgumentException("El código '{$egress->code}' ya está en uso");
             }
 
-            // Validar que la fecha no sea futura (opcional)
-            if ($egress->date > now()->toDateString()) {
+            // ✅ VALIDACIÓN DE FECHA MEJORADA: Permitir fechas futuras para egresos de viaje
+            $isTravelExpense = str_contains($egress->name ?? '', 'Gastos de viaje');
+            
+            if (!$isTravelExpense && $egress->date > now()->toDateString()) {
                 throw new \InvalidArgumentException('La fecha del egreso no puede ser futura');
             }
+
+            // ✅ VALIDACIÓN ALTERNATIVA: Permitir fechas hasta 1 año en el futuro
+            /*
+            $maxFutureDate = now()->addYear()->toDateString();
+            if ($egress->date > $maxFutureDate) {
+                throw new \InvalidArgumentException('La fecha del egreso no puede ser mayor a 1 año en el futuro');
+            }
+            */
 
             // Validar que los IDs de relaciones existan (si se proporcionan)
             if ($egress->agent_id && !Agent::find($egress->agent_id)) {

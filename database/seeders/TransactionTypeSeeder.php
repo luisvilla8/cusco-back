@@ -2,28 +2,46 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use App\Models\TransactionType;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
 
 class TransactionTypeSeeder extends Seeder
 {
     /**
      * Run the database seeds.
-     *
-     * @return void
      */
-    public function run()
+    public function run(): void
     {
-        DB::table('transaction_types')->insert([
-            "name" => "Venta",
-            'created_at' => now(),
-            'updated_at' => now()
-        ]);
-        DB::table('transaction_types')->insert([
-            "name" => "Compra",
-            'created_at' => now(),
-            'updated_at' => now()
-        ]);
+        $transactionTypes = [
+            [
+                'name' => 'Venta',
+                'code' => 'SALE',
+                'description' => 'Transacción de venta de productos a clientes'
+            ],
+            [
+                'name' => 'Compra', 
+                'code' => 'PURCHASE',
+                'description' => 'Transacción de compra de productos a proveedores'
+            ],
+            [
+                'name' => 'Devolución de Venta',
+                'code' => 'RETURN_SALE',
+                'description' => 'Devolución de productos vendidos por parte del cliente'
+            ],
+            [
+                'name' => 'Devolución de Compra',
+                'code' => 'RETURN_PURCHASE', 
+                'description' => 'Devolución de productos comprados al proveedor'
+            ],
+        ];
+
+        foreach ($transactionTypes as $transactionType) {
+            TransactionType::updateOrCreate(
+                ['code' => $transactionType['code']],
+                $transactionType
+            );
+        }
+
+        $this->command->info('✅ TransactionTypes con devoluciones creados exitosamente');
     }
 }

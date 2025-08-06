@@ -13,7 +13,7 @@ class StoreUserRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return true;
+        return true; // Aquí puedes agregar lógica de permisos
     }
 
     /**
@@ -23,10 +23,13 @@ class StoreUserRequest extends FormRequest
     {
         return [
             'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email|max:255',
-            'password' => 'required|string|min:8|confirmed',
+            'email' => 'required|email|max:255|unique:users,email',
+            'password' => 'required|string|min:6',
             'phone' => 'nullable|string|max:20',
-            'role_id' => 'nullable|exists:roles,id', // ✅ Agregar validación de role_id
+            'role_id' => 'required|exists:roles,id',
+            // ✅ CAMBIAR a array de zonas
+            'zone_ids' => 'nullable|array',
+            'zone_ids.*' => 'exists:zones,id',
         ];
     }
 
@@ -36,14 +39,18 @@ class StoreUserRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'name.required' => 'El nombre es obligatorio.',
-            'email.required' => 'El email es obligatorio.',
-            'email.email' => 'El email debe tener un formato válido.',
-            'email.unique' => 'Este email ya está registrado.',
-            'password.required' => 'La contraseña es obligatoria.',
-            'password.min' => 'La contraseña debe tener al menos 8 caracteres.',
-            'password.confirmed' => 'La confirmación de contraseña no coincide.',
-            'role_id.exists' => 'El rol seleccionado no existe.',
+            'name.required' => 'El nombre es obligatorio',
+            'name.max' => 'El nombre no puede exceder 255 caracteres',
+            'email.required' => 'El email es obligatorio',
+            'email.email' => 'El email debe tener un formato válido',
+            'email.unique' => 'Este email ya está registrado',
+            'password.required' => 'La contraseña es obligatoria',
+            'password.min' => 'La contraseña debe tener al menos 6 caracteres',
+            'phone.max' => 'El teléfono no puede exceder 20 caracteres',
+            'role_id.required' => 'El rol es obligatorio',
+            'role_id.exists' => 'El rol seleccionado no es válido',
+            'zone_ids.array' => 'Las zonas deben ser un array',
+            'zone_ids.*.exists' => 'Una o más zonas seleccionadas no son válidas',
         ];
     }
 

@@ -13,33 +13,7 @@ return new class extends Migration
      */
     public function up()
     {
-        Schema::create('transactions', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('agent_id')->constrained('agents');
-            $table->foreignId('user_id')->constrained('users');
-            $table->text('description')->nullable();
-            $table->string('code', 50)->unique();
-            $table->foreignId('zone_id')->nullable()->constrained('zones');
-            $table->foreignId('transaction_type_id')->constrained('transaction_types');
-            $table->decimal('amount_paid', 10, 2)->default(0);
-            $table->date('date');
-            $table->decimal('total', 10, 2)->default(0);
-            $table->foreignId('trip_id')->nullable()->constrained('trips');
-            $table->timestamps();
-            $table->softDeletes();
-
-            $table->index(['code']);
-            $table->index(['date']);
-            $table->index(['agent_id']);
-            $table->index(['user_id']);
-            $table->index(['zone_id']);
-            $table->index(['transaction_type_id']);
-            $table->index(['trip_id']);
-            $table->index(['total']);
-            $table->index(['amount_paid']);
-            $table->index(['deleted_at']);
-        });
-
+        // ✅ CREAR transaction_details SIN CONSTRAINT ÚNICO
         Schema::create('transaction_details', function (Blueprint $table) {
             $table->id();
             $table->foreignId('product_id')->constrained('products');
@@ -49,12 +23,18 @@ return new class extends Migration
             $table->timestamps();
             $table->softDeletes();
 
+            // ✅ ÍNDICES NORMALES PARA PERFORMANCE
             $table->index(['product_id']);
             $table->index(['transaction_id']);
             $table->index(['price']);
             $table->index(['quantity']);
             $table->index(['deleted_at']);
-            $table->unique(['product_id', 'transaction_id'], 'unique_product_transaction');
+            
+            // ✅ ÍNDICE COMPUESTO NORMAL (NO ÚNICO) PARA BÚSQUEDAS RÁPIDAS
+            $table->index(['product_id', 'transaction_id'], 'idx_product_transaction');
+            
+            // ❌ ELIMINADO: unique constraint que causaba problemas
+            // $table->unique(['product_id', 'transaction_id'], 'unique_product_transaction');
         });
     }
 
@@ -65,7 +45,7 @@ return new class extends Migration
      */
     public function down()
     {
+        // ✅ ELIMINAR transaction_details
         Schema::dropIfExists('transaction_details');
-        Schema::dropIfExists('transactions');
     }
 };

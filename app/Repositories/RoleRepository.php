@@ -45,7 +45,6 @@ class RoleRepository
         return $query->withCount('users')->paginate($filters['per_page'] ?? 15);
     }
 
-  
     public function getActiveForDropdown(): Collection
     {
         return $this->model->active()
@@ -54,7 +53,6 @@ class RoleRepository
             ->orderBy('name', 'asc')
             ->get();
     }
-
 
     public function getAllActive(): Collection
     {
@@ -96,18 +94,26 @@ class RoleRepository
         });
     }
 
+    // ✅ CORREGIR MÉTODO forceDelete - SIN MODIFICAR users_count
     public function forceDelete(int $id): ?Role
     {
         return DB::transaction(function () use ($id) {
             $role = $this->findWithTrashedAndCount($id);
             if (!$role) return null;
             
-            // Create snapshot
-            $snapshot = $role->replicate();
+            // ✅ CREAR SNAPSHOT SIN MODIFICAR PROPIEDADES COMPUTADAS
+            $snapshot = new Role();
             $snapshot->id = $role->id;
-            $snapshot->users_count = $role->users_count;
+            $snapshot->name = $role->name;
+            $snapshot->code = $role->code;
+            $snapshot->description = $role->description;
+            $snapshot->created_at = $role->created_at;
+            $snapshot->updated_at = $role->updated_at;
             $snapshot->deleted_at = $role->deleted_at;
             $snapshot->exists = true;
+            
+            // ✅ AGREGAR users_count COMO ATRIBUTO ADICIONAL (NO PROPIEDAD)
+            $snapshot->setAttribute('users_count', $role->users_count ?? 0);
             
             $role->forceDelete();
             return $snapshot;

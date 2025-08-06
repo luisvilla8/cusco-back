@@ -22,7 +22,6 @@ return new class extends Migration
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->foreignId('role_id')->constrained('roles');
-            $table->foreignId('zone_id')->nullable()->constrained('zones');
             $table->rememberToken();
             $table->timestamps();
             $table->softDeletes();
@@ -32,7 +31,6 @@ return new class extends Migration
             $table->index(['email']);
             $table->index(['phone']);
             $table->index(['role_id']);
-            $table->index(['zone_id']);
             $table->index(['deleted_at']);
         });
     }

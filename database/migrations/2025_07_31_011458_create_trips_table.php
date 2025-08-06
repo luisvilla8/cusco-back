@@ -17,6 +17,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('agent_id')->constrained('agents');
             $table->foreignId('zone_id')->constrained('zones');
+            $table->foreignId('user_id')->constrained('users'); // ✅ NUEVO CAMPO
             $table->string('name', 255);
             $table->text('description')->nullable();
             $table->decimal('travel_expenses', 10, 2)->default(0);
@@ -33,6 +34,7 @@ return new class extends Migration
             $table->index(['date_end']);
             $table->index(['agent_id']);
             $table->index(['zone_id']);
+            $table->index(['user_id']); // ✅ NUEVO ÍNDICE
             $table->index(['total']);
             $table->index(['deleted_at']);
         });

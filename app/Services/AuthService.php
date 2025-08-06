@@ -1,256 +1,149 @@
 <?php
+// filepath: c:\Users\Martin\Documents\proyecto-luis-cusco\cusco-back\app\Services\AuthService.php
 
 namespace App\Services;
 
-use App\Models\User;
-use App\Models\Role;
+use App\Helpers\ResponseHelper;
+use App\Mappers\AuthMapper;
+use App\Repositories\AuthRepository;
+use App\Traits\LoggingTrait;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
 
-abstract class BaseService
+class AuthService
 {
-    /**
-     * Handle exceptions and return standardized response
-     */
-    protected function handleException(\Exception $exception): array
-    {
-        return [
-            'success' => false,
-            'message' => 'Error: ' . $exception->getMessage(),
-            'code' => $exception->getCode() ?: 500
-        ];
-    }
+    use LoggingTrait;
 
-    /**
-     * Success response format
-     */
-    protected function successResponse($data, string $message = '', int $code = 200): array
-    {
-        return [
-            'success' => true,
-            'data' => $data,
-            'message' => $message,
-            'code' => $code
-        ];
-    }
+    public function __construct(
+        private AuthRepository $authRepository
+    ) {}
 
-    /**
-     * Error response format
-     */
-    protected function errorResponse(string $message, int $code = 400): array
-    {
-        return [
-            'success' => false,
-            'message' => $message,
-            'code' => $code
-        ];
-    }
-
-    /**
-     * Created response format (for POST operations)
-     */
-    protected function createdResponse($data, string $message = ''): array
-    {
-        return [
-            'success' => true,
-            'data' => $data,
-            'message' => $message,
-            'code' => 201
-        ];
-    }
-
-    /**
-     * Not found response format
-     */
-    protected function notFoundResponse(string $message = 'Resource not found'): array
-    {
-        return [
-            'success' => false,
-            'message' => $message,
-            'code' => 404
-        ];
-    }
-
-    /**
-     * Validation error response format
-     */
-    protected function validationErrorResponse(string $message = 'Validation failed'): array
-    {
-        return [
-            'success' => false,
-            'message' => $message,
-            'code' => 422
-        ];
-    }
-}
-
-class AuthService extends BaseService
-{
-    /**
-     * Handle user login
-     */
     public function login(array $credentials): array
     {
-        try {
-            // Solo buscar usuarios activos (no eliminados)
-            $user = User::active()
-                ->where('email', $credentials['email'])
-                ->with('role')
-                ->first();
+        $this->logInfo('Attempting user login', ['email' => $credentials['email']]);
 
-            if (!$user || !Hash::check($credentials['password'], $user->password)) {
-                return $this->errorResponse('Credenciales incorrectas', 401);
-            }
+        $user = $this->authRepository->findUserByEmail($credentials['email']);
 
-            // Crear token
-            $tokenName = 'auth_token_' . now()->timestamp;
-            $token = $user->createToken($tokenName);
-
-            $data = (object) [
-                'user' => $user,
-                'token' => $token->plainTextToken,
-                'expires_in' => 24 * 60 * 60 // 24 horas
-            ];
-
-            return $this->successResponse($data, 'Login exitoso');
-
-        } catch (\Exception $e) {
-            Log::error('Error en login: ' . $e->getMessage());
-            return $this->handleException($e);
+        if (!$user || !Hash::check($credentials['password'], $user->password)) {
+            $this->logWarning('Login failed - invalid credentials', ['email' => $credentials['email']]);
+            return ResponseHelper::unauthorized('Credenciales incorrectas');
         }
+
+        $tokenName = 'auth_token_' . now()->timestamp;
+        $token = $user->createToken($tokenName);
+        $expiresIn = 24 * 60 * 60; // 24 horas
+
+        $loginResponse = AuthMapper::toLoginResponse($user, $token->plainTextToken, $expiresIn);
+
+        $this->logInfo('User logged in successfully', [
+            'user_id' => $user->id,
+            'user_code' => $user->code,
+            'role' => $user->role?->name
+        ]);
+
+        return ResponseHelper::success(
+            AuthMapper::loginResponseToArray($loginResponse),
+            'Login exitoso'
+        );
     }
 
     /**
-     * Handle user registration
+     * ✅ AUTO-REGISTRO: Para usuarios que se registran a sí mismos
      */
     public function register(array $data): array
     {
+        $this->logInfo('Attempting user auto-registration', ['email' => $data['email']]);
+
         try {
-            DB::beginTransaction();
+            $user = $this->authRepository->createUserFromRegistration($data);
 
-            // Asignar rol por defecto si no se especifica
-            if (!isset($data['role_id']) || empty($data['role_id'])) {
-                $defaultRole = Role::where('name', 'User')->first();
-                if (!$defaultRole) {
-                    // Crear rol por defecto si no existe
-                    $defaultRole = Role::create([
-                        'name' => 'User',
-                        'description' => 'Usuario regular'
-                    ]);
-                }
-                $data['role_id'] = $defaultRole->id;
-            }
+            // ✅ Login automático después del registro
+            $tokenName = 'auth_token_' . now()->timestamp;
+            $token = $user->createToken($tokenName);
+            $expiresIn = 24 * 60 * 60; // 24 horas
 
-            // Crear usuario
-            $user = User::create($data);
+            $registerResponse = AuthMapper::toRegisterResponse($user, $token->plainTextToken, $expiresIn);
 
-            // Crear token automáticamente
-            $token = $user->createToken('auth_token_' . now()->timestamp);
+            $this->logInfo('User auto-registered successfully', [
+                'user_id' => $user->id,
+                'user_code' => $user->code,
+                'role' => $user->role?->name,
+                'zone' => $user->zone?->name
+            ]);
 
-            // Cargar relaciones
-            $user->load('role');
-
-            DB::commit();
-
-            $responseData = (object) [
-                'user' => $user,
-                'token' => $token->plainTextToken,
-                'expires_in' => 24 * 60 * 60 // 24 horas
-            ];
-
-            return $this->createdResponse($responseData, 'Usuario registrado exitosamente');
-
+            return ResponseHelper::created(
+                AuthMapper::registerResponseToArray($registerResponse),
+                'Usuario registrado e iniciado sesión exitosamente'
+            );
         } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Error en register: ' . $e->getMessage());
-            return $this->handleException($e);
+            $this->logError('Error in auto-registration', ['email' => $data['email'], 'error' => $e->getMessage()]);
+            return ResponseHelper::error('Error al registrar usuario: ' . $e->getMessage());
         }
     }
 
-    /**
-     * Handle user logout
-     */
-    public function logout(User $user): array
+    public function logout($user): array
     {
-        try {
-            // Eliminar el token específico del usuario autenticado
-            $currentToken = $user->currentAccessToken();
-            if ($currentToken) {
-                $user->tokens()->where('id', $currentToken->id)->delete();
-            }
-
-            return $this->successResponse([], 'Logout exitoso');
-
-        } catch (\Exception $e) {
-            Log::error('Error en logout: ' . $e->getMessage());
-            return $this->handleException($e);
-        }
+        $this->logInfo('User logout', ['user_id' => $user->id]);
+        $this->authRepository->revokeUserToken($user);
+        return ResponseHelper::success([], 'Logout exitoso');
     }
 
-    /**
-     * Get authenticated user profile
-     */
-    public function getProfile(User $user): array
+    public function getProfile($user): array
     {
-        try {
-            $user->load('role');
+        $this->logInfo('Fetching user profile', ['user_id' => $user->id]);
 
-            $data = (object) [
-                'user' => $user,
-            ];
-
-            return $this->successResponse($data, 'Perfil obtenido exitosamente');
-
-        } catch (\Exception $e) {
-            Log::error('Error en getProfile: ' . $e->getMessage());
-            return $this->handleException($e);
+        $userWithRelations = $this->authRepository->findUserWithTokens($user->id);
+        
+        if (!$userWithRelations) {
+            return ResponseHelper::notFound('Usuario no encontrado');
         }
+
+        $authUserDTO = AuthMapper::userToAuthDTO($userWithRelations);
+
+        return ResponseHelper::success(
+            AuthMapper::authUserToArray($authUserDTO),
+            'Perfil obtenido exitosamente'
+        );
     }
 
-    /**
-     * Refresh authentication token
-     */
-    public function refreshToken(User $user): array
+    public function refreshToken($user): array
     {
-        try {
-            // Eliminar token actual
-            $currentToken = $user->currentAccessToken();
-            if ($currentToken) {
-                $user->tokens()->where('id', $currentToken->id)->delete();
-            }
+        $this->logInfo('Refreshing user token', ['user_id' => $user->id]);
 
-            // Crear nuevo token
-            $token = $user->createToken('auth_token_' . now()->timestamp);
+        $this->authRepository->revokeUserToken($user);
 
-            $data = (object) [
-                'user' => $user->load('role'),
-                'token' => $token->plainTextToken,
-                'expires_in' => 24 * 60 * 60 // 24 horas
-            ];
+        $tokenName = 'auth_token_' . now()->timestamp;
+        $token = $user->createToken($tokenName);
+        $expiresIn = 24 * 60 * 60; // 24 horas
 
-            return $this->successResponse($data, 'Token renovado exitosamente');
+        $userWithRelations = $this->authRepository->findUserWithTokens($user->id);
+        $loginResponse = AuthMapper::toLoginResponse($userWithRelations, $token->plainTextToken, $expiresIn);
 
-        } catch (\Exception $e) {
-            Log::error('Error en refreshToken: ' . $e->getMessage());
-            return $this->handleException($e);
-        }
+        return ResponseHelper::success(
+            AuthMapper::loginResponseToArray($loginResponse),
+            'Token renovado exitosamente'
+        );
     }
 
-    /**
-     * Revoke all user tokens
-     */
-    public function revokeAllTokens(User $user): array
+    public function revokeAllTokens($user): array
     {
-        try {
-            // Eliminar todos los tokens del usuario
-            $user->tokens()->delete();
+        $this->logInfo('Revoking all user tokens', ['user_id' => $user->id]);
+        $this->authRepository->revokeAllUserTokens($user);
+        return ResponseHelper::success([], 'Todos los tokens han sido revocados');
+    }
 
-            return $this->successResponse([], 'Todos los tokens han sido revocados');
+    public function changePassword($user, string $currentPassword, string $newPassword): array
+    {
+        $this->logInfo('Attempting password change', ['user_id' => $user->id]);
 
-        } catch (\Exception $e) {
-            Log::error('Error en revokeAllTokens: ' . $e->getMessage());
-            return $this->handleException($e);
+        if (!Hash::check($currentPassword, $user->password)) {
+            return ResponseHelper::unauthorized('La contraseña actual es incorrecta');
         }
+
+        $hashedNewPassword = Hash::make($newPassword);
+        $this->authRepository->updateUserPassword($user->id, $hashedNewPassword);
+
+        $this->logInfo('Password changed successfully', ['user_id' => $user->id]);
+
+        return ResponseHelper::success([], 'Contraseña actualizada exitosamente');
     }
 }

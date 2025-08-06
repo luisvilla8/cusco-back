@@ -19,8 +19,13 @@ class RoleSeeder extends Seeder
                 // code se genera automáticamente: "ADMIN"
             ],
             [
+                'name' => 'Vendedor',  // ✅ AGREGAR ESTE ROL
+                'description' => 'Personal de ventas en tienda'
+                // code se genera automáticamente: "VEND"
+            ],
+            [
                 'name' => 'Agente',
-                'description' => 'Agente de ventas'
+                'description' => 'Agente de ventas en campo'
                 // code se genera automáticamente: "AGENT"
             ],
             [
@@ -36,7 +41,10 @@ class RoleSeeder extends Seeder
         ];
 
         foreach ($roles as $role) {
-            Role::create($role);
+            Role::updateOrCreate(
+                ['name' => $role['name']], // ✅ Evitar duplicados
+                $role
+            );
         }
     }
 }

@@ -17,6 +17,10 @@ use App\Http\Controllers\Api\V1\MeasureTypeController;
 use App\Http\Controllers\Api\V1\ProductCategoryController;
 use App\Http\Controllers\Api\V1\ProductPriceDetailController;
 use App\Http\Controllers\Api\V1\ZoneController;
+use App\Http\Controllers\Api\V1\PaymentMethodController;
+use App\Http\Controllers\Api\V1\TransactionTypeController;
+use App\Http\Controllers\Api\V1\TripController;
+use App\Http\Controllers\Api\V1\TransactionController;
 use Illuminate\Support\Facades\Route;
 
 // AUTENTICACIÓN PROTEGIDA
@@ -28,13 +32,18 @@ Route::prefix('auth')->name('auth.')->group(function () {
     Route::post('change-password', [AuthController::class, 'changePassword'])->name('change-password');
 });
 
-// USUARIOS
-Route::prefix('users')->name('users.')->group(function () {
+// USUARIOS (GESTIÓN ADMINISTRATIVA)
+Route::prefix('users')->name('users.')->middleware('validate.numeric.id')->group(function () {
+    Route::get('list', [UserController::class, 'list'])->name('list'); // Para dropdowns
+
     Route::get('/', [UserController::class, 'index'])->name('index');
-    Route::get('{user}', [UserController::class, 'show'])->name('show');
-    Route::put('{user}', [UserController::class, 'update'])->name('update');
-    Route::delete('{user}', [UserController::class, 'destroy'])->name('destroy');
-    Route::post('{user}/change-password', [UserController::class, 'changePassword'])->name('change-password');
+    Route::post('/', [UserController::class, 'store'])->name('store');
+    Route::get('{id}', [UserController::class, 'show'])->name('show');
+    Route::put('{id}', [UserController::class, 'update'])->name('update');                    // Para JSON
+    Route::post('{id}', [UserController::class, 'update'])->name('update-form');             // Para formularios
+    Route::delete('{id}', [UserController::class, 'destroy'])->name('destroy');
+
+    Route::delete('{id}/force', [UserController::class, 'forceDelete'])->name('force-delete');
 });
 
 // ROLES 
@@ -82,7 +91,7 @@ Route::prefix('products')->name('products.')->middleware('validate.numeric.id')-
     Route::get('low-stock', [ProductController::class, 'lowStock'])->name('low-stock'); // Stock bajo
     Route::get('out-of-stock', [ProductController::class, 'outOfStock'])->name('out-of-stock'); // Sin stock
     Route::get('category/{categoryId}', [ProductController::class, 'byCategory'])->name('by-category'); // Por categoría
-    
+
     Route::patch('{id}/stock/add', [ProductController::class, 'addStock'])->name('add-stock'); // Agregar stock
     Route::patch('{id}/stock/remove', [ProductController::class, 'removeStock'])->name('remove-stock'); // Quitar stock
     Route::patch('{id}/stock/set', [ProductController::class, 'setStock'])->name('set-stock'); // Establecer stock
@@ -109,11 +118,6 @@ Route::prefix('zones')->name('zones.')->middleware('validate.numeric.id')->group
 
     Route::delete('{id}/force', [ZoneController::class, 'forceDelete'])->name('force-delete');
 });
-
-
-
-
-
 
 
 
@@ -151,95 +155,101 @@ Route::prefix('agents')->name('agents.')->middleware('validate.numeric.id')->gro
     Route::delete('{id}/force', [AgentController::class, 'forceDelete'])->name('force-delete');
 });
 
+// MÉTODOS DE PAGO
+Route::prefix('payment-methods')->name('payment-methods.')->middleware('validate.numeric.id')->group(function () {
+    Route::get('list', [PaymentMethodController::class, 'list'])->name('list'); // Para dropdowns
+    Route::get('/', [PaymentMethodController::class, 'index'])->name('index');
+    Route::get('{id}', [PaymentMethodController::class, 'show'])->name('show');
+});
 
-// // PRODUCTOS
-// Route::prefix('products')->name('products.')->group(function () {
-//     Route::post('/', [ProductController::class, 'store'])->name('store');
-//     Route::get('/{product}', [ProductController::class, 'show'])->name('show');
-//     Route::put('/{product}', [ProductController::class, 'update'])->name('update');
-//     Route::delete('/{product}', [ProductController::class, 'destroy'])->name('destroy');
-// });
+// TIPOS DE TRANSACCIÓN
+Route::prefix('transaction-types')->name('transaction-types.')->middleware('validate.numeric.id')->group(function () {
+    Route::get('list', [TransactionTypeController::class, 'list'])->name('list'); // Para dropdowns
+    Route::get('/', [TransactionTypeController::class, 'index'])->name('index');
+    Route::get('{id}', [TransactionTypeController::class, 'show'])->name('show');
+});
 
-// // AGENTES
-// Route::prefix('agents')->name('agents.')->group(function () {
-//     Route::get('/', [AgentController::class, 'index'])->name('index');
-//     Route::post('/', [AgentController::class, 'store'])->name('store');
+// PRECIOS POR ZONA
+Route::prefix('product-price-details')->name('product-price-details.')->middleware('validate.numeric.id')->group(function () {
+    Route::get('list', [ProductPriceDetailController::class, 'list'])->name('list'); // Para dropdowns
+    Route::get('flat', [ProductPriceDetailController::class, 'flat'])->name('flat')  // ✅ NUEVO: Lista plana
+        ->withoutMiddleware('validate.numeric.id');
     
-//     // Rutas específicas ANTES de las rutas con parámetros
-//     Route::get('fetchRUC/{ruc}', [AgentController::class, 'fetchRUC'])->name('fetch-ruc');
-//     Route::get('fetchDNI/{dni}', [AgentController::class, 'fetchDNI'])->name('fetch-dni');
+    // ✅ GESTIÓN MASIVA
+    Route::post('massive', [ProductPriceDetailController::class, 'storeMassive'])->name('store-massive')
+        ->withoutMiddleware('validate.numeric.id');
+    Route::put('massive', [ProductPriceDetailController::class, 'updateMassive'])->name('update-massive')
+        ->withoutMiddleware('validate.numeric.id');
+
+    // ✅ POR PRODUCTO
+    Route::get('product/{productId}/zones', [ProductPriceDetailController::class, 'getProductZonePrices'])
+        ->name('product-zones')->where('productId', '[0-9]+');
+    Route::delete('product/{productId}/clear', [ProductPriceDetailController::class, 'clearProductPrices'])
+        ->name('clear-product-prices')->where('productId', '[0-9]+');
+
+    // ✅ CRUD ESTÁNDAR
+    Route::get('/', [ProductPriceDetailController::class, 'index'])->name('index'); // 👈 AGRUPADO POR PRODUCTO
+    Route::get('{id}', [ProductPriceDetailController::class, 'show'])->name('show');
+    Route::put('{id}', [ProductPriceDetailController::class, 'update'])->name('update');
+    Route::delete('{id}', [ProductPriceDetailController::class, 'destroy'])->name('destroy');
+    Route::delete('{id}/force', [ProductPriceDetailController::class, 'forceDelete'])->name('force-delete');
+});
+
+// VIAJES (CON PERMISOS POR ROL) - CORREGIR MIDDLEWARE
+Route::prefix('trips')->name('trips.')->group(function () {
+    Route::get('list', [TripController::class, 'list'])->name('list'); // Para dropdowns
     
-//     // Rutas con parámetros AL FINAL
-//     Route::get('{agent}', [AgentController::class, 'show'])->name('show');
-//     Route::put('{agent}', [AgentController::class, 'update'])->name('update');
-//     Route::delete('{agent}', [AgentController::class, 'destroy'])->name('destroy');
-// });
+    Route::get('/', [TripController::class, 'index'])->name('index');
+    Route::post('/', [TripController::class, 'store'])->name('store'); // ✅ SIN MIDDLEWARE RESTRICTIVO
+    
+    // APLICAR MIDDLEWARE SOLO A RUTAS CON ID
+    Route::middleware('validate.numeric.id')->group(function () {
+        Route::get('{id}', [TripController::class, 'show'])->name('show');
+        Route::get('{id}/dependencies', [TripController::class, 'dependencies'])->name('dependencies');
+        Route::put('{id}', [TripController::class, 'update'])->name('update');
+        Route::delete('{id}', [TripController::class, 'destroy'])->name('destroy');
+        Route::delete('{id}/force', [TripController::class, 'forceDelete'])->name('force-delete');
+        Route::delete('{id}/force-direct', [TripController::class, 'forceDeleteDirect'])->name('force-delete-direct');
+    });
+});
 
-// // CATEGORÍAS DE AGENTES
-// Route::prefix('agent-categories')->name('agent-categories.')->group(function () {
-//     Route::get('/', [AgentCategoryController::class, 'index'])->name('index');
-//     Route::post('/', [AgentCategoryController::class, 'store'])->name('store');
-//     Route::get('{agentCategory}', [AgentCategoryController::class, 'show'])->name('show');
-//     Route::put('{agentCategory}', [AgentCategoryController::class, 'update'])->name('update');
-//     Route::delete('{agentCategory}', [AgentCategoryController::class, 'destroy'])->name('destroy');
-// });
-
-// // CLIENTES
-// Route::prefix('clients')->name('clients.')->group(function () {
-//     Route::get('/', [ClientController::class, 'index'])->name('index');
-//     Route::post('/', [ClientController::class, 'store'])->name('store');
-//     Route::get('by-categories', [ClientController::class, 'getClientsByCategories'])->name('by-categories');
-//     Route::put('{client}', [ClientController::class, 'update'])->name('update');
-// });
-
-// // PROVEEDORES
-// Route::prefix('providers')->name('providers.')->group(function () {
-//     Route::get('/', [ProviderController::class, 'index'])->name('index');
-//     Route::post('/', [ProviderController::class, 'store'])->name('store');
-//     Route::get('{provider}', [ProviderController::class, 'show'])->name('show');
-//     Route::put('{provider}', [ProviderController::class, 'update'])->name('update');
-//     Route::delete('{provider}', [ProviderController::class, 'destroy'])->name('destroy');
-// });
-
-// // VENTAS
-// Route::prefix('sales')->name('sales.')->group(function () {
-//     Route::get('/', [SalesController::class, 'getSales'])->name('index');
-//     Route::post('/', [SalesController::class, 'saveSale'])->name('store');
-//     Route::get('by-client-categories', [SalesController::class, 'getSalesByClientCategories'])->name('by-client-categories');
-//     Route::get('debts/by-client-categories', [SalesController::class, 'getSalesDebtsByClientCategories'])->name('debts.by-client-categories');
-//     Route::get('details/{saleId}', [SalesController::class, 'getSaleDetailsBySaleId'])->name('details');
-//     Route::get('detail/{saleId}', [SalesController::class, 'getSaleDetailBySaleId'])->name('detail');
-//     Route::put('{saleId}', [SalesController::class, 'updateSale'])->name('update');
-// });
-
-// // COMPRAS
-// Route::prefix('purchases')->name('purchases.')->group(function () {
-//     Route::get('/', [PurchasesController::class, 'getPurchases'])->name('index');
-//     Route::post('/', [PurchasesController::class, 'savePurchase'])->name('store');
-//     Route::get('by-provider-categories', [PurchasesController::class, 'getPurchasesByProviderCategories'])->name('by-provider-categories');
-//     Route::get('debts/by-provider-categories', [PurchasesController::class, 'getPurchasesDebtsByProviderCategories'])->name('debts.by-provider-categories');
-//     Route::get('details/{purchaseId}', [PurchasesController::class, 'getPurchaseDetailsBySaleId'])->name('details');
-// });
-
-// // TIPOS DE AGENTE
-// Route::prefix('agent-types')->name('agent-types.')->group(function () {
-//     Route::get('/', [AgentTypeController::class, 'index'])->name('index');
-//     Route::post('/', [AgentTypeController::class, 'store'])->name('store');
-//     Route::get('{agentType}', [AgentTypeController::class, 'show'])->name('show');
-//     Route::put('{agentType}', [AgentTypeController::class, 'update'])->name('update');
-//     Route::delete('{agentType}', [AgentTypeController::class, 'destroy'])->name('destroy');
-// });
-
-// // TRANSACCIONES
-// Route::prefix('transactions')->name('transactions.')->group(function () {
-//     Route::get('/', [TransactionDetailController::class, 'index'])->name('index');
-//     Route::get('{transaction}', [TransactionDetailController::class, 'show'])->name('show');
-//     Route::put('{transaction}', [TransactionDetailController::class, 'update'])->name('update');
-//     Route::delete('{transaction}', [TransactionDetailController::class, 'destroy'])->name('destroy');
-//     Route::post('payments', [TransactionDetailController::class, 'saveTransactionPaymentAndUpdateDebtByRoute'])->name('payments');
-// });
-
-// // DEUDAS
-// Route::prefix('debts')->name('debts.')->group(function () {
-//     Route::get('/', [DebtsController::class, 'index'])->name('index');
-// });
+// TRANSACCIONES (CON PERMISOS POR ROL)
+Route::prefix('transactions')->name('transactions.')->group(function () {
+    Route::get('list', [TransactionController::class, 'list'])->name('list');
+    
+    // ✅ RUTAS ESPECIALES SIN MIDDLEWARE ID
+    Route::get('sales', [TransactionController::class, 'sales'])->name('sales');
+    Route::get('purchases', [TransactionController::class, 'purchases'])->name('purchases');
+    Route::get('pending-delivery', [TransactionController::class, 'pendingDelivery'])->name('pending-delivery');
+    Route::get('pending-payment', [TransactionController::class, 'pendingPayment'])->name('pending-payment');
+    Route::get('completed', [TransactionController::class, 'completed'])->name('completed');
+    
+    Route::get('/', [TransactionController::class, 'index'])->name('index');
+    Route::post('/', [TransactionController::class, 'store'])->name('store');
+    
+    // ✅ APLICAR MIDDLEWARE SOLO A RUTAS CON ID
+    Route::middleware('validate.numeric.id')->group(function () {
+        Route::get('{id}', [TransactionController::class, 'show'])->name('show');
+        Route::get('{id}/dependencies', [TransactionController::class, 'dependencies'])->name('dependencies');
+        
+        // ✅ NUEVA RUTA: Obtener datos para crear devolución
+        Route::get('{id}/return-data', [TransactionController::class, 'getReturnData'])->name('return-data');
+        
+        Route::put('{id}', [TransactionController::class, 'update'])->name('update');
+        Route::delete('{id}', [TransactionController::class, 'destroy'])->name('destroy');
+        Route::delete('{id}/force', [TransactionController::class, 'forceDelete'])->name('force-delete');
+        
+        // ✅ ACCIONES ESPECÍFICAS DE TRANSACCIONES
+        Route::patch('{id}/deliver', [TransactionController::class, 'markAsDelivered'])->name('deliver');
+        Route::patch('{id}/return', [TransactionController::class, 'markAsReturned'])->name('return');
+        Route::patch('{id}/cancel', [TransactionController::class, 'cancelTransaction'])->name('cancel');
+        Route::post('{id}/add-payment', [TransactionController::class, 'addPayment'])->name('add-payment');
+    });
+    
+    // ✅ RUTAS PARA DEVOLUCIONES
+    Route::post('returns', [TransactionController::class, 'createReturn'])->name('create-return');
+    Route::get('returns', [TransactionController::class, 'returns'])->name('returns');
+    Route::get('{id}/returns', [TransactionController::class, 'getTransactionReturns'])
+        ->name('transaction-returns')
+        ->middleware('validate.numeric.id');
+});

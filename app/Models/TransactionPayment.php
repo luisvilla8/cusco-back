@@ -1,4 +1,5 @@
 <?php
+// filepath: c:\Users\Martin\Documents\proyecto-luis-cusco\cusco-back\app\Models\TransactionPayment.php
 
 namespace App\Models;
 
@@ -17,9 +18,10 @@ class TransactionPayment extends Model
 
     protected $fillable = [
         'transaction_id',
+        'payment_method_id',
         'amount_paid',
         'code',
-        'payment_method_id',
+        'description' // ✅ NUEVO CAMPO
     ];
 
     protected $casts = [
@@ -56,25 +58,6 @@ class TransactionPayment extends Model
         return $query->where('payment_method_id', $paymentMethodId);
     }
 
-    public function scopeByCode(Builder $query, string $code): Builder
-    {
-        return $query->where('code', $code);
-    }
-
-    public function scopeSearch(Builder $query, string $search): Builder
-    {
-        return $query->where(function ($q) use ($search) {
-            $q->where('code', 'LIKE', "%{$search}%")
-              ->orWhereHas('transaction', function ($transactionQuery) use ($search) {
-                  $transactionQuery->where('code', 'LIKE', "%{$search}%");
-              })
-              ->orWhereHas('paymentMethod', function ($paymentQuery) use ($search) {
-                  $paymentQuery->where('name', 'LIKE', "%{$search}%")
-                               ->orWhere('code', 'LIKE', "%{$search}%");
-              });
-        });
-    }
-
     public function scopeAmountRange(Builder $query, float $minAmount = null, float $maxAmount = null): Builder
     {
         if ($minAmount !== null) {
@@ -86,61 +69,10 @@ class TransactionPayment extends Model
         return $query;
     }
 
-    public function scopeWithRelations(Builder $query): Builder
+    public function scopeWithDescription(Builder $query): Builder
     {
-        return $query->with([
-            'transaction:id,code,date,total',
-            'paymentMethod:id,name,code,is_active'
-        ]);
-    }
-
-    public function scopeOrderByAmount(Builder $query, string $direction = 'desc'): Builder
-    {
-        return $query->orderBy('amount_paid', $direction);
-    }
-
-    public function scopeByPaymentType(Builder $query, string $paymentType): Builder
-    {
-        return $query->whereHas('paymentMethod', function ($paymentQuery) use ($paymentType) {
-            $paymentQuery->where('code', $paymentType);
-        });
-    }
-
-    public function scopeCashPayments(Builder $query): Builder
-    {
-        return $query->byPaymentType('CASH');
-    }
-
-    public function scopeCardPayments(Builder $query): Builder
-    {
-        return $query->byPaymentType('CARD');
-    }
-
-    public function scopeTransferPayments(Builder $query): Builder
-    {
-        return $query->byPaymentType('TRANSFER');
-    }
-
-    public function scopeToday(Builder $query): Builder
-    {
-        return $query->whereHas('transaction', function ($transactionQuery) {
-            $transactionQuery->whereDate('date', now()->toDateString());
-        });
-    }
-
-    public function scopeDateRange(Builder $query, string $startDate, string $endDate): Builder
-    {
-        return $query->whereHas('transaction', function ($transactionQuery) use ($startDate, $endDate) {
-            $transactionQuery->whereBetween('date', [$startDate, $endDate]);
-        });
-    }
-
-    public function scopeThisMonth(Builder $query): Builder
-    {
-        return $query->whereHas('transaction', function ($transactionQuery) {
-            $transactionQuery->whereMonth('date', now()->month)
-                            ->whereYear('date', now()->year);
-        });
+        return $query->whereNotNull('description')
+                    ->where('description', '!=', '');
     }
 
     // ✅ ACCESSORS
@@ -151,80 +83,98 @@ class TransactionPayment extends Model
 
     public function getDisplayNameAttribute(): string
     {
-        return "{$this->paymentMethod?->name} - {$this->formatted_amount} ({$this->code})";
+        $name = "{$this->paymentMethod?->name} - {$this->formatted_amount}";
+        
+        if ($this->description) {
+            $name .= " ({$this->description})";
+        }
+        
+        return $name;
     }
 
-    public function getPaymentMethodNameAttribute(): string
+    public function getShortDescriptionAttribute(): string
     {
-        return $this->paymentMethod?->name ?? 'Método no encontrado';
+        if (!$this->description) return '';
+        
+        return strlen($this->description) > 50 
+            ? substr($this->description, 0, 47) . '...'
+            : $this->description;
     }
 
-    public function getPaymentMethodCodeAttribute(): string
+    public function getHasDescriptionAttribute(): bool
     {
-        return $this->paymentMethod?->code ?? '';
+        return !empty($this->description);
     }
 
-    public function getTransactionCodeAttribute(): string
+    // ✅ EVENTOS DEL MODELO
+    protected static function boot()
     {
-        return $this->transaction?->code ?? '';
-    }
+        parent::boot();
 
-    public function getTransactionDateAttribute(): ?string
-    {
-        return $this->transaction?->date?->format('d/m/Y');
-    }
+        static::creating(function ($transactionPayment) {
+            if (empty($transactionPayment->code)) {
+                $transactionPayment->code = $transactionPayment->generateCode();
+            }
+        });
 
-    public function getIsActivePaymentMethodAttribute(): bool
-    {
-        return $this->paymentMethod?->is_active ?? false;
-    }
-
-    public function getIsCashPaymentAttribute(): bool
-    {
-        return $this->paymentMethod?->code === 'CASH';
-    }
-
-    public function getIsCardPaymentAttribute(): bool
-    {
-        return $this->paymentMethod?->code === 'CARD';
-    }
-
-    public function getIsTransferPaymentAttribute(): bool
-    {
-        return $this->paymentMethod?->code === 'TRANSFER';
-    }
-
-    public function getIsDigitalPaymentAttribute(): bool
-    {
-        return in_array($this->paymentMethod?->code, ['CARD', 'TRANSFER', 'DIGITAL_WALLET']);
-    }
-
-    public function getPaymentStatusAttribute(): string
-    {
-        if (!$this->is_active_payment_method) return 'inactive_method';
-        if ($this->amount_paid <= 0) return 'invalid_amount';
-        return 'valid';
+        static::saving(function ($transactionPayment) {
+            // ✅ VALIDAR QUE amount_paid SEA UN NÚMERO VÁLIDO
+            if (!is_numeric($transactionPayment->amount_paid)) {
+                throw new \InvalidArgumentException('El monto del pago debe ser un número válido.');
+            }
+            
+            // ✅ VALIDAR QUE NO SEA CERO
+            if ($transactionPayment->amount_paid == 0) {
+                throw new \InvalidArgumentException('El monto del pago no puede ser cero.');
+            }
+            
+            // ✅ PERMITIR TANTO PAGOS (POSITIVOS) COMO REEMBOLSOS (POSITIVOS TAMBIÉN)
+            // Los reembolsos se registran como montos positivos en transaction_payments
+            // porque representan dinero que la empresa entrega al cliente
+            
+            // ✅ VALIDAR MÉTODO DE PAGO ACTIVO
+            if ($transactionPayment->payment_method_id) {
+                $paymentMethod = PaymentMethod::active()->find($transactionPayment->payment_method_id);
+                if (!$paymentMethod) {
+                    throw new \InvalidArgumentException('El método de pago seleccionado no está disponible.');
+                }
+            }
+            
+            // ✅ LOGGING MEJORADO PARA DEBUG
+            $transaction = Transaction::find($transactionPayment->transaction_id);
+            $isReturnTransaction = $transaction ? $transaction->isReturn() : false;
+            
+            Log::info('TransactionPayment validation passed', [
+                'payment_id' => $transactionPayment->id ?? 'creating',
+                'transaction_id' => $transactionPayment->transaction_id,
+                'amount_paid' => $transactionPayment->amount_paid,
+                'is_return_transaction' => $isReturnTransaction,
+                'payment_type' => $isReturnTransaction ? 'refund' : 'payment',
+                'payment_method_id' => $transactionPayment->payment_method_id,
+                'description' => $transactionPayment->description
+            ]);
+        });
     }
 
     // ✅ MÉTODOS DE NEGOCIO
+    public function generateCode(int $attempt = 0): string
+    {
+        $prefix = 'PAY';
+        $date = now()->format('dmy'); // Formato: 060825
+        
+        // ✅ OBTENER CONTEO DIARIO MÁS ATTEMPT PARA EVITAR DUPLICADOS
+        $dailyCount = static::whereDate('created_at', now())
+            ->whereNull('deleted_at')
+            ->count() + 1 + $attempt;
+        
+        $sequentialNumber = str_pad($dailyCount, 4, '0', STR_PAD_LEFT);
+        
+        return "{$prefix}-{$date}-{$sequentialNumber}";
+    }
+
     public function isActive(): bool
     {
         return is_null($this->deleted_at);
-    }
-
-    public function canBeDeleted(): bool
-    {
-        // TransactionPayment puede eliminarse si la transacción lo permite
-        // Podría verificar el estado de la transacción
-        return true;
-    }
-
-    public function isValidPayment(): bool
-    {
-        return $this->transaction_id && 
-               $this->payment_method_id && 
-               $this->amount_paid > 0 &&
-               $this->is_active_payment_method;
     }
 
     public function belongsToTransaction(int $transactionId): bool
@@ -232,58 +182,28 @@ class TransactionPayment extends Model
         return $this->transaction_id === $transactionId;
     }
 
-    public function usesPaymentMethod(int $paymentMethodId): bool
+    public function hasValidAmount(): bool
     {
-        return $this->payment_method_id === $paymentMethodId;
+        return $this->amount_paid > 0;
     }
 
-    public function generateCode(): string
+    public function canBeDeleted(): bool
     {
-        // Prefijo basado en el método de pago
-        $methodCode = $this->paymentMethod?->code ?? 'PAY';
-        $prefix = "PAY-{$methodCode}";
-        
-        // Fecha en formato YYMMDD
-        $dateCode = now()->format('ymd');
-        
-        // Número secuencial para el día y método de pago
-        $dailyCount = static::whereHas('paymentMethod', function ($query) use ($methodCode) {
-            $query->where('code', $methodCode);
-        })
-        ->whereDate('created_at', now()->toDateString())
-        ->whereNull('deleted_at')
-        ->count() + 1;
-        
-        $sequentialNumber = str_pad($dailyCount, 4, '0', STR_PAD_LEFT);
-        
-        return "{$prefix}-{$dateCode}-{$sequentialNumber}";
+        return true;
     }
 
-    public function isSamePaymentMethod(string $methodCode): bool
+    public function setDescription(string $description = null): void
     {
-        return $this->paymentMethod?->code === $methodCode;
+        $this->description = $description ? trim($description) : null;
+        $this->save();
     }
 
-    public function getPaymentPercentageOfTransaction(): float
+    public function hasDescription(): bool
     {
-        $transactionTotal = $this->transaction?->total ?? 0;
-        if ($transactionTotal <= 0) return 0;
-        
-        return round(($this->amount_paid / $transactionTotal) * 100, 2);
+        return !empty($this->description);
     }
 
     // ✅ MÉTODOS ESTÁTICOS DE UTILIDAD
-    public static function getTotalByPaymentMethod(int $paymentMethodId, string $startDate = null, string $endDate = null): float
-    {
-        $query = static::active()->byPaymentMethod($paymentMethodId);
-        
-        if ($startDate && $endDate) {
-            $query->dateRange($startDate, $endDate);
-        }
-        
-        return $query->sum('amount_paid');
-    }
-
     public static function getTotalByTransaction(int $transactionId): float
     {
         return static::active()
@@ -291,125 +211,75 @@ class TransactionPayment extends Model
             ->sum('amount_paid');
     }
 
-    public static function getTotalCashToday(): float
+    public static function getPaymentsByMethod(int $paymentMethodId): \Illuminate\Database\Eloquent\Collection
     {
         return static::active()
-            ->cashPayments()
-            ->today()
-            ->sum('amount_paid');
+            ->byPaymentMethod($paymentMethodId)
+            ->with(['transaction:id,code,date', 'paymentMethod:id,name'])
+            ->orderBy('created_at', 'desc')
+            ->get();
     }
 
-    public static function getTotalCardToday(): float
-    {
-        return static::active()
-            ->cardPayments()
-            ->today()
-            ->sum('amount_paid');
-    }
-
-    public static function getTotalThisMonth(): float
-    {
-        return static::active()
-            ->thisMonth()
-            ->sum('amount_paid');
-    }
-
-    public static function createPayment(int $transactionId, int $paymentMethodId, float $amountPaid): self
+    public static function createPayment(int $transactionId, int $paymentMethodId, float $amountPaid, string $description = null): self
     {
         return static::create([
             'transaction_id' => $transactionId,
             'payment_method_id' => $paymentMethodId,
-            'amount_paid' => $amountPaid
+            'amount_paid' => $amountPaid,
+            'description' => $description
         ]);
     }
 
-    public static function getPaymentMethodsSummary(string $startDate = null, string $endDate = null): array
+    public static function getPaymentsWithDescription(): \Illuminate\Database\Eloquent\Collection
     {
-        $query = static::active()->withRelations();
-        
-        if ($startDate && $endDate) {
-            $query->dateRange($startDate, $endDate);
-        }
-        
-        return $query->get()
-            ->groupBy('payment_method.code')
-            ->map(function ($payments, $methodCode) {
-                return [
-                    'method_code' => $methodCode,
-                    'method_name' => $payments->first()->payment_method->name,
-                    'total_amount' => $payments->sum('amount_paid'),
-                    'count' => $payments->count(),
-                    'average_amount' => round($payments->avg('amount_paid'), 2)
-                ];
-            })->values()->toArray();
+        return static::active()
+            ->withDescription()
+            ->with(['transaction:id,code', 'paymentMethod:id,name'])
+            ->orderBy('created_at', 'desc')
+            ->get();
     }
 
-    // ✅ VALIDACIONES EN EVENTOS DEL MODELO
-    protected static function boot()
+    // ✅ MÉTODOS PARA ANÁLISIS Y REPORTES
+    public function getPaymentSummary(): array
     {
-        parent::boot();
+        return [
+            'id' => $this->id,
+            'code' => $this->code,
+            'amount' => $this->amount_paid,
+            'formatted_amount' => $this->formatted_amount,
+            'payment_method' => $this->paymentMethod?->name,
+            'description' => $this->description,
+            'short_description' => $this->short_description,
+            'has_description' => $this->has_description,
+            'created_at' => $this->created_at->format('Y-m-d H:i:s'),
+            'transaction_code' => $this->transaction?->code
+        ];
+    }
 
-        // Generar código automáticamente si no se proporciona
-        static::creating(function ($payment) {
-            if (empty($payment->code)) {
-                // Código temporal antes de tener ID y relaciones
-                $payment->code = 'TEMP-' . uniqid() . '-' . now()->format('His');
-            }
-        });
+    // ✅ AGREGAR MÉTODOS HELPER MEJORADOS
+    public function isRefund(): bool
+    {
+        // Un reembolso es un pago asociado a una transacción de devolución
+        return $this->transaction?->isReturn() && $this->amount_paid > 0;
+    }
 
-        // Actualizar código después de crear (cuando ya tenemos relaciones)
-        static::created(function ($payment) {
-            if (strpos($payment->code, 'TEMP-') === 0) {
-                $payment->update([
-                    'code' => $payment->generateCode()
-                ]);
-            }
-        });
+    public function isPayment(): bool
+    {
+        // Un pago es un monto asociado a una transacción original (no devolución)
+        return !$this->transaction?->isReturn() && $this->amount_paid > 0;
+    }
 
-        // Validación antes de guardar
-        static::saving(function ($payment) {
-            // Validar que el monto sea positivo
-            if ($payment->amount_paid <= 0) {
-                throw new \InvalidArgumentException('El monto pagado debe ser mayor a 0');
-            }
+    public function getFormattedAmount(): string
+    {
+        if ($this->isRefund()) {
+            return 'Reembolso: S/ ' . number_format($this->amount_paid, 2);
+        } else {
+            return 'Pago: S/ ' . number_format($this->amount_paid, 2);
+        }
+    }
 
-            // Validar unicidad de code (excluyendo temporales)
-            if (!str_starts_with($payment->code, 'TEMP-')) {
-                $codeExists = static::where('code', $payment->code)
-                    ->when($payment->exists, function ($query) use ($payment) {
-                        return $query->where('id', '!=', $payment->id);
-                    })
-                    ->whereNull('deleted_at')
-                    ->exists();
-
-                if ($codeExists) {
-                    throw new \InvalidArgumentException("El código '{$payment->code}' ya está en uso");
-                }
-            }
-
-            // Validar que la transacción existe
-            if (!Transaction::find($payment->transaction_id)) {
-                throw new \InvalidArgumentException('La transacción especificada no existe');
-            }
-
-            // Validar que el método de pago existe y está activo
-            $paymentMethod = PaymentMethod::find($payment->payment_method_id);
-            if (!$paymentMethod) {
-                throw new \InvalidArgumentException('El método de pago especificado no existe');
-            }
-            if (!$paymentMethod->is_active) {
-                throw new \InvalidArgumentException('El método de pago especificado está inactivo');
-            }
-        });
-
-        // Logging cuando se crea un pago
-        static::created(function ($payment) {
-            Log::info("TransactionPayment created", [
-                'transaction_id' => $payment->transaction_id,
-                'payment_method_id' => $payment->payment_method_id,
-                'amount_paid' => $payment->amount_paid,
-                'code' => $payment->code
-            ]);
-        });
+    public function getPaymentType(): string
+    {
+        return $this->isRefund() ? 'refund' : 'payment';
     }
 }

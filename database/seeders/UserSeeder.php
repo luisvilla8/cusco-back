@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\User;
 use App\Models\Role;
+use App\Models\UserZone;
 use App\Models\Zone;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -24,7 +25,13 @@ class UserSeeder extends Seeder
 
         // Verificar que existen los roles
         if (!$adminRole || !$vendedorRole || !$supervisorRole || !$agentRole) {
-            $this->command->error('Roles not found. Run RoleSeeder first.');
+            $this->command->error('Roles not found. Available roles: ' . Role::pluck('name')->implode(', '));
+            return;
+        }
+
+        // ✅ VERIFICAR ZONA
+        if (!$zone) {
+            $this->command->error('No zones found. Run ZoneSeeder first.');
             return;
         }
 
@@ -35,6 +42,7 @@ class UserSeeder extends Seeder
                 'password' => Hash::make('admin123'),
                 'phone' => '981018671',
                 'role_id' => $adminRole->id,
+                // ❌ ELIMINAR zone_id
             ],
             [
                 'name' => 'Juan Carlos Vendedor',
@@ -42,6 +50,7 @@ class UserSeeder extends Seeder
                 'password' => Hash::make('vendedor123'),
                 'phone' => '987654321',
                 'role_id' => $vendedorRole->id,
+                // ❌ ELIMINAR zone_id
             ],
             [
                 'name' => 'María Elena Supervisora',
@@ -49,6 +58,7 @@ class UserSeeder extends Seeder
                 'password' => Hash::make('supervisor123'),
                 'phone' => '987654322',
                 'role_id' => $supervisorRole->id,
+                // ❌ ELIMINAR zone_id
             ],
             [
                 'name' => 'Carlos Admin',
@@ -56,30 +66,49 @@ class UserSeeder extends Seeder
                 'password' => Hash::make('admin123'),
                 'phone' => '987654323',
                 'role_id' => $adminRole->id,
+                // ❌ ELIMINAR zone_id
             ],
             [
                 'name' => 'Admin Principal',
                 'email' => 'admin@cusco.com',
                 'password' => Hash::make('password123'),
-                'phone' => '987654321',
-                'role_id' => $adminRole?->id,
-                'zone_id' => $zone?->id,
+                'phone' => '987654324', // ✅ CAMBIAR teléfono duplicado
+                'role_id' => $adminRole->id,
+                // ❌ ELIMINAR zone_id
             ],
             [
-                'name' => 'Juan Pérez',
+                'name' => 'Juan Pérez Agente',
                 'email' => 'juan.perez@cusco.com',
                 'password' => Hash::make('password123'),
-                'phone' => '987654322',
-                'role_id' => $agentRole?->id,
-                'zone_id' => $zone?->id,
+                'phone' => '987654325', // ✅ CAMBIAR teléfono duplicado
+                'role_id' => $vendedorRole->id,
+                // ❌ ELIMINAR zone_id
             ],
         ];
 
         foreach ($users as $userData) {
-            User::updateOrCreate(
-                ['email' => $userData['email']],
-                $userData
-            );
+            try {
+                $user = User::updateOrCreate(
+                    ['email' => $userData['email']],
+                    $userData
+                );
+                
+                // ✅ ASIGNAR zona a través de UserZone - ESPECIALMENTE IMPORTANTE PARA VENDEDORES
+                if ($zone && !$user->hasZone($zone->id)) {
+                    UserZone::create([
+                        'user_id' => $user->id,
+                        'zone_id' => $zone->id
+                    ]);
+                }
+                
+                // ✅ LOG DETALLADO PARA VERIFICAR PERMISOS - CORREGIR SINTAXIS
+                $roleName = $user->role ? $user->role->name : 'Sin rol';
+                $this->command->info("✅ Usuario creado: {$user->name} - Rol: {$roleName}");
+                $this->command->info("   📍 Zonas asignadas: " . $user->zones->pluck('name')->implode(', '));
+                
+            } catch (\Exception $e) {
+                $this->command->error("❌ Error creando usuario {$userData['email']}: " . $e->getMessage());
+            }
         }
     }
 }

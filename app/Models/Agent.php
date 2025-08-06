@@ -8,6 +8,55 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\{BelongsTo, HasMany};
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+/**
+ * App\Models\Agent
+ *
+ * @property int $id
+ * @property string $name
+ * @property string $code
+ * @property string|null $phone
+ * @property string|null $address
+ * @property string|null $email
+ * @property string|null $dni
+ * @property string|null $ruc
+ * @property int $agent_type_id
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property-read \App\Models\AgentType $agentType
+ * @property-read string|null $agent_type_name
+ * @property-read string $display_name
+ * @property-read string|null $formatted_phone
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Transaction> $transactions
+ * @property-read int|null $transactions_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Trip> $trips
+ * @property-read int|null $trips_count
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent active()
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent byCode(string $code)
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent byType($agentTypeId)
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent clients()
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent onlyTrashed()
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent providers()
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent query()
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent search($search)
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent whereAddress($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent whereAgentTypeId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent whereCode($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent whereDeletedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent whereDni($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent whereEmail($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent whereName($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent wherePhone($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent whereRuc($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent whereUpdatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent withTrashed()
+ * @method static \Illuminate\Database\Eloquent\Builder|Agent withoutTrashed()
+ * @mixin \Eloquent
+ */
 class Agent extends Model
 {
     use HasFactory, SoftDeletes;

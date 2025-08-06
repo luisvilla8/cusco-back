@@ -13,7 +13,7 @@ class UpdateUserRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return true;
+        return true; // Aquí puedes agregar lógica de permisos
     }
 
     /**
@@ -21,14 +21,17 @@ class UpdateUserRequest extends FormRequest
      */
     public function rules(): array
     {
-        $userId = $this->route('user') ?? $this->route('id');
-
+        $userId = $this->route('id');
+        
         return [
-            'name' => 'sometimes|required|string|max:255',
-            'email' => 'sometimes|required|email|unique:users,email,' . $userId . '|max:255',
-            'password' => 'sometimes|required|string|min:8|confirmed',
+            'name' => 'sometimes|string|max:255',
+            'email' => "sometimes|email|max:255|unique:users,email,{$userId}",
+            'password' => 'sometimes|nullable|string|min:6',
             'phone' => 'nullable|string|max:20',
-            'role_id' => 'sometimes|required|exists:roles,id',
+            'role_id' => 'sometimes|exists:roles,id',
+            // ✅ ASEGURAR que zone_ids sea opcional y array
+            'zone_ids' => 'nullable|array',
+            'zone_ids.*' => 'exists:zones,id',
         ];
     }
 
@@ -38,16 +41,26 @@ class UpdateUserRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'name.required' => 'El nombre es obligatorio.',
-            'email.required' => 'El email es obligatorio.',
-            'email.email' => 'El email debe tener un formato válido.',
-            'email.unique' => 'Este email ya está registrado.',
-            'password.required' => 'La contraseña es obligatoria.',
-            'password.min' => 'La contraseña debe tener al menos 8 caracteres.',
-            'password.confirmed' => 'La confirmación de contraseña no coincide.',
-            'role_id.required' => 'El rol es obligatorio.',
-            'role_id.exists' => 'El rol seleccionado no existe.',
+            'name.max' => 'El nombre no puede exceder 255 caracteres',
+            'email.email' => 'El email debe tener un formato válido',
+            'email.unique' => 'Este email ya está registrado',
+            'password.min' => 'La contraseña debe tener al menos 6 caracteres',
+            'phone.max' => 'El teléfono no puede exceder 20 caracteres',
+            'role_id.exists' => 'El rol seleccionado no es válido',
+            'zone_ids.array' => 'Las zonas deben ser un array',
+            'zone_ids.*.exists' => 'Una o más zonas seleccionadas no son válidas',
         ];
+    }
+
+    /**
+     * ✅ PREPARAR datos para asegurar que zone_ids esté siempre presente si se envía
+     */
+    protected function prepareForValidation()
+    {
+        // Si zone_ids está presente pero está vacío, convertirlo a array vacío
+        if ($this->has('zone_ids') && is_null($this->zone_ids)) {
+            $this->merge(['zone_ids' => []]);
+        }
     }
 
     protected function failedValidation(Validator $validator)

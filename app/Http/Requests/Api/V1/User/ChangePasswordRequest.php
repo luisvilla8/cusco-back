@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Requests\Api\V1\User;
+namespace App\Http\Requests\Api\V1\Auth;
 
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -21,7 +21,7 @@ class ChangePasswordRequest extends FormRequest
     {
         return [
             'current_password' => 'required|string',
-            'new_password' => 'required|string|min:8|confirmed',
+            'new_password' => 'required|string|min:6|confirmed',
         ];
     }
 
@@ -31,10 +31,10 @@ class ChangePasswordRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'current_password.required' => 'La contraseña actual es obligatoria.',
-            'new_password.required' => 'La nueva contraseña es obligatoria.',
-            'new_password.min' => 'La nueva contraseña debe tener al menos 8 caracteres.',
-            'new_password.confirmed' => 'La confirmación de contraseña no coincide.',
+            'current_password.required' => 'La contraseña actual es obligatoria',
+            'new_password.required' => 'La nueva contraseña es obligatoria',
+            'new_password.min' => 'La nueva contraseña debe tener al menos 6 caracteres',
+            'new_password.confirmed' => 'La confirmación de la nueva contraseña no coincide',
         ];
     }
 }

@@ -8,6 +8,39 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+/**
+ * App\Models\ProductPriceDetail
+ *
+ * @property int $id
+ * @property string $price
+ * @property string $code
+ * @property int $zone_id
+ * @property int $product_id
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property-read \App\Models\Product $product
+ * @property-read \App\Models\Zone $zone
+ * @method static Builder|ProductPriceDetail active()
+ * @method static Builder|ProductPriceDetail byCode(string $code)
+ * @method static Builder|ProductPriceDetail byProduct(int $productId)
+ * @method static Builder|ProductPriceDetail byZone(int $zoneId)
+ * @method static Builder|ProductPriceDetail newModelQuery()
+ * @method static Builder|ProductPriceDetail newQuery()
+ * @method static Builder|ProductPriceDetail onlyTrashed()
+ * @method static Builder|ProductPriceDetail query()
+ * @method static Builder|ProductPriceDetail whereCode($value)
+ * @method static Builder|ProductPriceDetail whereCreatedAt($value)
+ * @method static Builder|ProductPriceDetail whereDeletedAt($value)
+ * @method static Builder|ProductPriceDetail whereId($value)
+ * @method static Builder|ProductPriceDetail wherePrice($value)
+ * @method static Builder|ProductPriceDetail whereProductId($value)
+ * @method static Builder|ProductPriceDetail whereUpdatedAt($value)
+ * @method static Builder|ProductPriceDetail whereZoneId($value)
+ * @method static Builder|ProductPriceDetail withTrashed()
+ * @method static Builder|ProductPriceDetail withoutTrashed()
+ * @mixin \Eloquent
+ */
 class ProductPriceDetail extends Model
 {
     use HasFactory, SoftDeletes;

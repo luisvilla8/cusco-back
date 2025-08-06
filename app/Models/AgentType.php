@@ -8,6 +8,38 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+/**
+ * App\Models\AgentType
+ *
+ * @property int $id
+ * @property string $name
+ * @property string $code
+ * @property string|null $description
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Agent> $activeAgents
+ * @property-read int|null $active_agents_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Agent> $agents
+ * @property-read int|null $agents_count
+ * @method static \Illuminate\Database\Eloquent\Builder|AgentType active()
+ * @method static \Illuminate\Database\Eloquent\Builder|AgentType byCode(string $code)
+ * @method static \Illuminate\Database\Eloquent\Builder|AgentType newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder|AgentType newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder|AgentType onlyTrashed()
+ * @method static \Illuminate\Database\Eloquent\Builder|AgentType query()
+ * @method static \Illuminate\Database\Eloquent\Builder|AgentType search($search)
+ * @method static \Illuminate\Database\Eloquent\Builder|AgentType whereCode($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|AgentType whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|AgentType whereDeletedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|AgentType whereDescription($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|AgentType whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|AgentType whereName($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|AgentType whereUpdatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|AgentType withTrashed()
+ * @method static \Illuminate\Database\Eloquent\Builder|AgentType withoutTrashed()
+ * @mixin \Eloquent
+ */
 class AgentType extends Model
 {
     use HasFactory, SoftDeletes;

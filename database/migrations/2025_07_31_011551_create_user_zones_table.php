@@ -15,15 +15,18 @@ return new class extends Migration
     {
         Schema::create('user_zones', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained('users');
-            $table->foreignId('zone_id')->constrained('zones');
+            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
+            $table->foreignId('zone_id')->constrained('zones')->onDelete('cascade');
             $table->timestamps();
             $table->softDeletes();
 
+            // ✅ ÍNDICE ÚNICO para evitar duplicados
+            $table->unique(['user_id', 'zone_id'], 'unique_user_zone');
+            
+            // Índices adicionales
             $table->index(['user_id']);
             $table->index(['zone_id']);
             $table->index(['deleted_at']);
-            $table->unique(['user_id', 'zone_id'], 'unique_user_zone');
         });
     }
 

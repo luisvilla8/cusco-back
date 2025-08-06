@@ -3,164 +3,81 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Http\Controllers\Api\BaseController;
-use App\Http\Resources\Api\V1\User\UserResource;
-use App\Http\Requests\Api\V1\User\StoreUserRequest;
-use App\Http\Requests\Api\V1\User\UpdateUserRequest;
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\V1\User\{IndexUserRequest, StoreUserRequest, UpdateUserRequest};
 use App\Services\UserService;
-use Illuminate\Http\Request;
+use App\Traits\ApiResponseTrait;
+use Illuminate\Http\JsonResponse;
 
-class UserController extends BaseController
+class UserController extends Controller
 {
+    use ApiResponseTrait;
+
     public function __construct(
         private UserService $userService
     ) {}
 
     /**
-     * Store a newly created user (registro público)
+     * Obtener todos los usuarios con paginación y filtros
      */
-    public function store(StoreUserRequest $request)
+    public function index(IndexUserRequest $request): JsonResponse
     {
-        $result = $this->userService->createUser($request->validated());
-
-        if (!$result['success']) {
-            return $this->sendError($result['message'], [], $result['code']);
-        }
-
-        return $this->sendCreated(
-            new UserResource($result['data']),
-            $result['message']
-        );
+        $result = $this->userService->getAllUsers($request->validated());
+        return $this->handleServiceResult($result);
     }
 
     /**
-     * Display a listing of active users.
+     * Obtener un usuario específico
      */
-    public function index(Request $request)
-    {
-        $result = $this->userService->getAllUsers($request->all());
-
-        if (!$result['success']) {
-            return $this->sendError($result['message'], [], $result['code']);
-        }
-
-        return response()->json([
-            'success' => $result['success'],
-            'data' => $result['data'],
-            'meta' => $result['meta'],
-            'message' => $result['message']
-        ]);
-    }
-
-    /**
-     * Display a listing of trashed users.
-     */
-    public function trashed(Request $request)
-    {
-        $result = $this->userService->getTrashedUsers($request->all());
-
-        if (!$result['success']) {
-            return $this->sendError($result['message'], [], $result['code']);
-        }
-
-        return response()->json([
-            'success' => $result['success'],
-            'data' => $result['data'],
-            'meta' => $result['meta'],
-            'message' => $result['message']
-        ]);
-    }
-
-    /**
-     * Display the specified user.
-     */
-    public function show(int $id)
+    public function show(int $id): JsonResponse
     {
         $result = $this->userService->getUser($id);
-
-        if (!$result['success']) {
-            return $this->sendError($result['message'], [], $result['code']);
-        }
-
-        return $this->sendResponse(
-            new UserResource($result['data']),
-            $result['message']
-        );
+        return $this->handleServiceResult($result);
     }
 
     /**
-     * Update the specified user.
+     * Obtener lista de usuarios para dropdowns
      */
-    public function update(UpdateUserRequest $request, int $id)
+    public function list(): JsonResponse
+    {
+        $result = $this->userService->getUsersList();
+        return $this->handleServiceResult($result);
+    }
+
+    /**
+     * Crear nuevo usuario
+     */
+    public function store(StoreUserRequest $request): JsonResponse
+    {
+        $result = $this->userService->createUser($request->validated());
+        return $this->handleServiceResult($result);
+    }
+
+    /**
+     * Actualizar usuario existente (JSON)
+     */
+    public function update(UpdateUserRequest $request, int $id): JsonResponse
     {
         $result = $this->userService->updateUser($id, $request->validated());
-
-        if (!$result['success']) {
-            return $this->sendError($result['message'], [], $result['code']);
-        }
-
-        return $this->sendResponse(
-            new UserResource($result['data']),
-            $result['message']
-        );
+        return $this->handleServiceResult($result);
     }
 
     /**
-     * Soft delete the specified user.
+     * Eliminar usuario (soft delete)
      */
-    public function destroy(int $id)
+    public function destroy(int $id): JsonResponse
     {
         $result = $this->userService->deleteUser($id);
-
-        if (!$result['success']) {
-            return $this->sendError($result['message'], [], $result['code']);
-        }
-
-        return $this->sendResponse([], $result['message']);
+        return $this->handleServiceResult($result);
     }
 
     /**
-     * Restore the specified user.
+     * Eliminar usuario permanentemente
      */
-    public function restore(int $id)
-    {
-        $result = $this->userService->restoreUser($id);
-
-        if (!$result['success']) {
-            return $this->sendError($result['message'], [], $result['code']);
-        }
-
-        return $this->sendResponse(
-            new UserResource($result['data']),
-            $result['message']
-        );
-    }
-
-    /**
-     * Permanently delete the specified user.
-     */
-    public function forceDelete(int $id)
+    public function forceDelete(int $id): JsonResponse
     {
         $result = $this->userService->forceDeleteUser($id);
-
-        if (!$result['success']) {
-            return $this->sendError($result['message'], [], $result['code']);
-        }
-
-        return $this->sendResponse([], $result['message']);
+        return $this->handleServiceResult($result);
     }
 
-    /**
-     * Change user password.
-     */
-    public function changePassword(Request $request, int $id)
-    {
-        $result = $this->userService->changePassword($id, $request->all());
-
-        if (!$result['success']) {
-            return $this->sendError($result['message'], [], $result['code']);
-        }
-
-        return $this->sendResponse([], $result['message']);
-    }
 }

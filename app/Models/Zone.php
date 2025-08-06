@@ -9,6 +9,50 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\{HasMany, BelongsToMany};
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+/**
+ * App\Models\Zone
+ *
+ * @property int $id
+ * @property string $name
+ * @property string $code
+ * @property string|null $description
+ * @property string|null $location_url
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Egress> $egresses
+ * @property-read int|null $egresses_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\ProductPriceDetail> $productPriceDetails
+ * @property-read int|null $product_price_details_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Transaction> $transactions
+ * @property-read int|null $transactions_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Trip> $trips
+ * @property-read int|null $trips_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\UserZone> $userZones
+ * @property-read int|null $user_zones_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\User> $users
+ * @property-read int|null $users_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\User> $usersViaZones
+ * @property-read int|null $users_via_zones_count
+ * @method static Builder|Zone active()
+ * @method static Builder|Zone byCode(string $code)
+ * @method static Builder|Zone newModelQuery()
+ * @method static Builder|Zone newQuery()
+ * @method static Builder|Zone onlyTrashed()
+ * @method static Builder|Zone query()
+ * @method static Builder|Zone search(string $search)
+ * @method static Builder|Zone whereCode($value)
+ * @method static Builder|Zone whereCreatedAt($value)
+ * @method static Builder|Zone whereDeletedAt($value)
+ * @method static Builder|Zone whereDescription($value)
+ * @method static Builder|Zone whereId($value)
+ * @method static Builder|Zone whereLocationUrl($value)
+ * @method static Builder|Zone whereName($value)
+ * @method static Builder|Zone whereUpdatedAt($value)
+ * @method static Builder|Zone withTrashed()
+ * @method static Builder|Zone withoutTrashed()
+ * @mixin \Eloquent
+ */
 class Zone extends Model
 {
     use HasFactory, SoftDeletes;

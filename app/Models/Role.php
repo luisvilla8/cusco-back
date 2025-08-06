@@ -3,21 +3,46 @@
 
 namespace App\Models;
 
-use App\Rules\RoleBusinessRules;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+/**
+ * App\Models\Role
+ *
+ * @property int $id
+ * @property string $name
+ * @property string $code
+ * @property string|null $description
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\User> $users
+ * @property-read int|null $users_count
+ * @method static \Illuminate\Database\Eloquent\Builder|Role active()
+ * @method static \Illuminate\Database\Eloquent\Builder|Role newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder|Role newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder|Role onlyTrashed()
+ * @method static \Illuminate\Database\Eloquent\Builder|Role query()
+ * @method static \Illuminate\Database\Eloquent\Builder|Role whereCode($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Role whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Role whereDeletedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Role whereDescription($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Role whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Role whereName($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Role whereUpdatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|Role withTrashed()
+ * @method static \Illuminate\Database\Eloquent\Builder|Role withoutTrashed()
+ * @mixin \Eloquent
+ */
 class Role extends Model
 {
     use HasFactory, SoftDeletes;
 
-    protected $table = 'roles';
-
     protected $fillable = [
         'name',
-        'code',
+        'code', 
         'description',
     ];
 
@@ -27,56 +52,16 @@ class Role extends Model
         'deleted_at' => 'datetime',
     ];
 
-    protected static function boot()
-    {
-        parent::boot();
-
-        // Generar código automáticamente si no se proporciona
-        static::creating(function ($role) {
-            if (empty($role->code)) {
-                $role->code = $role->generateCode();
-            }
-            
-            // Normalizar datos
-            $role->name = ucwords(trim($role->name));
-            $role->code = strtoupper(trim($role->code));
-        });
-
-        // Validar unicidad de code
-        static::saving(function ($role) {
-            $codeExists = static::where('code', $role->code)
-                ->when($role->exists, function ($query) use ($role) {
-                    return $query->where('id', '!=', $role->id);
-                })
-                ->whereNull('deleted_at')
-                ->exists();
-
-            if ($codeExists) {
-                throw new \InvalidArgumentException("El código '{$role->code}' ya está en uso");
-            }
-        });
-
-        static::deleting(function ($role) {
-            if (!$role->isForceDeleting()) {
-                RoleBusinessRules::validateDeletion($role);
-            }
-        });
-
-        static::forceDeleting(function ($role) {
-            RoleBusinessRules::validateForceDeletion($role);
-        });
-    }
-
     /**
-     * Get all users with this role
+     * ✅ RELACIÓN: Usuarios con este rol
      */
     public function users(): HasMany
     {
-        return $this->hasMany(User::class);
+        return $this->hasMany(User::class, 'role_id');
     }
 
     /**
-     * Scope para roles activos
+     * ✅ SCOPE: Roles activos
      */
     public function scopeActive($query)
     {
@@ -145,5 +130,20 @@ class Role extends Model
         } while ($exists && $counter <= 99);
 
         return $code;
+    }
+
+    /**
+     * ✅ AGREGAR EVENTO creating PARA AUTO-GENERAR CÓDIGO
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        // Generar código automáticamente si no se proporciona
+        static::creating(function ($role) {
+            if (empty($role->code)) {
+                $role->code = $role->generateCode();
+            }
+        });
     }
 }

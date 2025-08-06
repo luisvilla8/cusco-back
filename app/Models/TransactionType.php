@@ -7,6 +7,37 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+/**
+ * App\Models\TransactionType
+ *
+ * @property int $id
+ * @property string $name
+ * @property string $code
+ * @property string|null $description
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property-read string $display_name
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Transaction> $transactions
+ * @property-read int|null $transactions_count
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType active()
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType byCode(string $code)
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType onlyTrashed()
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType query()
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType search(string $search)
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType whereCode($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType whereDeletedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType whereDescription($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType whereName($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType whereUpdatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType withTrashed()
+ * @method static \Illuminate\Database\Eloquent\Builder|TransactionType withoutTrashed()
+ * @mixin \Eloquent
+ */
 class TransactionType extends Model
 {
     use HasFactory, SoftDeletes;
@@ -140,5 +171,21 @@ class TransactionType extends Model
     public static function getTransactionTypeByAgentType(int $agentType)
     {
         return TransactionType::where('id', $agentType)->first();
+    }
+
+    // ✅ AGREGAR SCOPE DE BÚSQUEDA
+    public function scopeSearch($query, string $search)
+    {
+        return $query->where(function ($q) use ($search) {
+            $q->where('name', 'LIKE', "%{$search}%")
+              ->orWhere('code', 'LIKE', "%{$search}%")
+              ->orWhere('description', 'LIKE', "%{$search}%");
+        });
+    }
+
+    // ✅ AGREGAR ACCESSOR
+    public function getDisplayNameAttribute(): string
+    {
+        return "{$this->name} ({$this->code})";
     }
 }

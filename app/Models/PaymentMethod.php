@@ -10,6 +10,53 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * App\Models\PaymentMethod
+ *
+ * @property int $id
+ * @property string $code
+ * @property string $name
+ * @property string|null $description
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property-read float $average_payment_amount
+ * @property-read string $display_name
+ * @property-read string $formatted_average_payment
+ * @property-read string $formatted_total_amount
+ * @property-read bool $is_card
+ * @property-read bool $is_cash
+ * @property-read bool $is_digital
+ * @property-read bool $is_transfer
+ * @property-read string $payment_type
+ * @property-read int $payments_count
+ * @property-read float $total_amount_processed
+ * @property-read array $usage_stats
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\TransactionPayment> $transactionPayments
+ * @property-read int|null $transaction_payments_count
+ * @method static Builder|PaymentMethod active()
+ * @method static Builder|PaymentMethod byCode(string $code)
+ * @method static Builder|PaymentMethod byName(string $name)
+ * @method static Builder|PaymentMethod newModelQuery()
+ * @method static Builder|PaymentMethod newQuery()
+ * @method static Builder|PaymentMethod onlyTrashed()
+ * @method static Builder|PaymentMethod orderByUsage(string $direction = 'desc')
+ * @method static Builder|PaymentMethod popular(int $limit = 5)
+ * @method static Builder|PaymentMethod query()
+ * @method static Builder|PaymentMethod search(string $search)
+ * @method static Builder|PaymentMethod whereCode($value)
+ * @method static Builder|PaymentMethod whereCreatedAt($value)
+ * @method static Builder|PaymentMethod whereDeletedAt($value)
+ * @method static Builder|PaymentMethod whereDescription($value)
+ * @method static Builder|PaymentMethod whereId($value)
+ * @method static Builder|PaymentMethod whereName($value)
+ * @method static Builder|PaymentMethod whereUpdatedAt($value)
+ * @method static Builder|PaymentMethod withPaymentsCount()
+ * @method static Builder|PaymentMethod withPaymentsSum()
+ * @method static Builder|PaymentMethod withTrashed()
+ * @method static Builder|PaymentMethod withoutTrashed()
+ * @mixin \Eloquent
+ */
 class PaymentMethod extends Model
 {
     use HasFactory, SoftDeletes;
@@ -387,14 +434,19 @@ class PaymentMethod extends Model
 
         // Validación antes de eliminar
         static::deleting(function ($paymentMethod) {
-            if (!$paymentMethod->isForceDeleting() && !$paymentMethod->canBeDeleted()) {
-                throw new \InvalidArgumentException('No se puede eliminar un método de pago que tiene pagos asociados');
+            if (!$paymentMethod->isForceDeleting()) {
+                \App\Rules\PaymentMethodBusinessRules::validateDeletion($paymentMethod);
             }
+        });
+
+        // Validación antes de eliminar físicamente
+        static::forceDeleting(function ($paymentMethod) {
+            \App\Rules\PaymentMethodBusinessRules::validateForceDeletion($paymentMethod);
         });
 
         // Logging cuando se crea un método de pago
         static::created(function ($paymentMethod) {
-            Log::info("PaymentMethod created", [
+            \Illuminate\Support\Facades\Log::info("PaymentMethod created", [
                 'id' => $paymentMethod->id,
                 'code' => $paymentMethod->code,
                 'name' => $paymentMethod->name

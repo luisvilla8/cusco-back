@@ -3,328 +3,158 @@
 
 namespace App\Services;
 
-use App\Models\User;
-use App\Models\Role;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Hash;
+use App\Helpers\ResponseHelper;
+use App\Mappers\UserMapper;
+use App\Repositories\UserRepository;
+use App\Traits\LoggingTrait;
 
-class UserService extends BaseService
+class UserService
 {
+    use LoggingTrait;
+
     public function __construct(
-        private User $user
+        private UserRepository $userRepository
     ) {}
 
-    /**
-     * Create a new user
-     */
-    public function createUser(array $data): array
-    {
-        try {
-            DB::beginTransaction();
-
-            // Si no se especifica role_id, asignar rol por defecto
-            if (!isset($data['role_id']) || empty($data['role_id'])) {
-                $defaultRole = Role::where('name', 'User')->first();
-                if (!$defaultRole) {
-                    // Crear rol por defecto si no existe
-                    $defaultRole = Role::create([
-                        'name' => 'User',
-                        'description' => 'Usuario regular'
-                    ]);
-                }
-                $data['role_id'] = $defaultRole->id;
-            } else {
-                // Verificar que el rol existe
-                $role = Role::find($data['role_id']);
-                if (!$role) {
-                    return $this->errorResponse('Role not found', 404);
-                }
-            }
-
-            $user = $this->user->create($data);
-            $user->load('role');
-
-            DB::commit();
-
-            return $this->createdResponse($user, 'User created successfully');
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Error creating user: ' . $e->getMessage());
-            return $this->handleException($e);
-        }
-    }
-
-    /**
-     * Get all users with pagination and filters
-     */
     public function getAllUsers(array $filters = []): array
     {
-        try {
-            // Solo usuarios activos por defecto
-            $query = $this->user->active()->with('role');
+        $this->logInfo('Fetching users with filters', ['filters' => $filters]);
 
-            // Incluir eliminados si se especifica
-            if (!empty($filters['include_deleted'])) {
-                $query = $this->user->withTrashed()->with('role');
-            }
+        $paginatedUsers = $this->userRepository->getAllActiveWithPagination($filters);
+        $mapped = UserMapper::paginatedToDTOs($paginatedUsers);
 
-            // Apply search filter
-            if (!empty($filters['search'])) {
-                $query->where(function ($q) use ($filters) {
-                    $q->where('name', 'like', '%' . $filters['search'] . '%')
-                      ->orWhere('email', 'like', '%' . $filters['search'] . '%')
-                      ->orWhere('phone', 'like', '%' . $filters['search'] . '%');
-                });
-            }
-
-            // Filter by role
-            if (!empty($filters['role_id'])) {
-                $query->where('role_id', $filters['role_id']);
-            }
-
-            // Apply ordering
-            $sortBy = $filters['sort_by'] ?? 'created_at';
-            $sortOrder = $filters['sort_order'] ?? 'desc';
-            $query->orderBy($sortBy, $sortOrder);
-
-            $users = $query->paginate($filters['per_page'] ?? 15);
-
-            return [
-                'success' => true,
-                'data' => $users->items(),
-                'meta' => [
-                    'total' => $users->total(),
-                    'per_page' => $users->perPage(),
-                    'current_page' => $users->currentPage(),
-                    'last_page' => $users->lastPage(),
-                    'from' => $users->firstItem(),
-                    'to' => $users->lastItem(),
-                    'has_more_pages' => $users->hasMorePages(),
-                ],
-                'message' => 'Users retrieved successfully',
-                'code' => 200
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('Error fetching users: ' . $e->getMessage());
-            return $this->handleException($e);
-        }
+        return ResponseHelper::paginated(
+            $mapped['data'],
+            $paginatedUsers,
+            'Usuarios obtenidos exitosamente'
+        );
     }
 
-    /**
-     * Get trashed users
-     */
-    public function getTrashedUsers(array $filters = []): array
-    {
-        try {
-            $query = $this->user->onlyTrashed()->with('role');
-
-            // Apply search filter
-            if (!empty($filters['search'])) {
-                $query->where(function ($q) use ($filters) {
-                    $q->where('name', 'like', '%' . $filters['search'] . '%')
-                      ->orWhere('email', 'like', '%' . $filters['search'] . '%')
-                      ->orWhere('phone', 'like', '%' . $filters['search'] . '%');
-                });
-            }
-
-            $users = $query->paginate($filters['per_page'] ?? 15);
-
-            return [
-                'success' => true,
-                'data' => $users->items(),
-                'meta' => [
-                    'total' => $users->total(),
-                    'per_page' => $users->perPage(),
-                    'current_page' => $users->currentPage(),
-                    'last_page' => $users->lastPage(),
-                    'from' => $users->firstItem(),
-                    'to' => $users->lastItem(),
-                    'has_more_pages' => $users->hasMorePages(),
-                ],
-                'message' => 'Trashed users retrieved successfully',
-                'code' => 200
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('Error fetching trashed users: ' . $e->getMessage());
-            return $this->handleException($e);
-        }
-    }
-
-    /**
-     * Get a specific user by ID
-     */
     public function getUser(int $id): array
     {
+        $this->logInfo('Fetching user', ['user_id' => $id]);
+
+        $user = $this->userRepository->findActive($id);
+
+        if (!$user) {
+            return ResponseHelper::notFound('Usuario no encontrado');
+        }
+
+        $userDTO = UserMapper::modelToDTO($user);
+        return ResponseHelper::success($userDTO->toArray(), 'Usuario obtenido exitosamente');
+    }
+
+    public function getUsersList(): array
+    {
+        $this->logInfo('Fetching users list for dropdown');
+
+        $users = $this->userRepository->getActiveForDropdown();
+        $dropdownData = UserMapper::collectionToDropdownDTOs($users);
+
+        return ResponseHelper::success($dropdownData, 'Lista de usuarios obtenida exitosamente');
+    }
+
+    public function createUser(array $data): array
+    {
+        $this->logInfo('Creating user', ['email' => $data['email']]);
+
         try {
-            $user = $this->user->active()->with('role')->find($id);
+            $user = $this->userRepository->create($data);
+            $userDTO = UserMapper::modelToDTO($user);
 
-            if (!$user) {
-                return $this->notFoundResponse('User not found');
-            }
+            $this->logInfo('User created successfully', ['user_id' => $user->id, 'user_code' => $user->code]);
 
-            return $this->successResponse($user, 'User retrieved successfully');
-
+            return ResponseHelper::created($userDTO->toArray(), 'Usuario creado exitosamente');
         } catch (\Exception $e) {
-            Log::error('Error fetching user: ' . $e->getMessage());
-            return $this->handleException($e);
+            $this->logError('Error creating user', ['error' => $e->getMessage()]);
+            return ResponseHelper::error('Error al crear el usuario: ' . $e->getMessage());
         }
     }
 
-    /**
-     * Update an existing user
-     */
     public function updateUser(int $id, array $data): array
     {
+        $this->logInfo('Updating user', ['user_id' => $id]);
+
         try {
-            $user = $this->user->active()->find($id);
+            $user = $this->userRepository->update($id, $data);
 
             if (!$user) {
-                return $this->notFoundResponse('User not found');
+                return ResponseHelper::notFound('Usuario no encontrado');
             }
 
-            // Verificar que el rol existe si se está cambiando
-            if (isset($data['role_id'])) {
-                $role = Role::find($data['role_id']);
-                if (!$role) {
-                    return $this->errorResponse('Role not found', 404);
-                }
-            }
+            $userDTO = UserMapper::modelToDTO($user);
 
-            DB::beginTransaction();
+            $this->logInfo('User updated successfully', ['user_id' => $user->id]);
 
-            $user->update($data);
-            $user->load('role');
-
-            DB::commit();
-
-            return $this->successResponse($user, 'User updated successfully');
-
+            return ResponseHelper::success($userDTO->toArray(), 'Usuario actualizado exitosamente');
         } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Error updating user: ' . $e->getMessage());
-            return $this->handleException($e);
+            $this->logError('Error updating user', ['user_id' => $id, 'error' => $e->getMessage()]);
+            return ResponseHelper::error('Error al actualizar el usuario: ' . $e->getMessage());
         }
     }
 
-    /**
-     * Soft delete a user
-     */
     public function deleteUser(int $id): array
     {
-        try {
-            $user = $this->user->active()->find($id);
+        $this->logInfo('Soft deleting user', ['user_id' => $id]);
 
-            if (!$user) {
-                return $this->notFoundResponse('User not found');
+        try {
+            $deleted = $this->userRepository->delete($id);
+
+            if (!$deleted) {
+                return ResponseHelper::notFound('Usuario no encontrado');
             }
 
-            DB::beginTransaction();
+            $this->logInfo('User soft deleted successfully', ['user_id' => $id]);
 
-            $user->delete(); // Soft delete
-
-            DB::commit();
-
-            return $this->successResponse([], 'User deleted successfully');
-
+            return ResponseHelper::success([], 'Usuario eliminado exitosamente');
         } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Error deleting user: ' . $e->getMessage());
-            return $this->handleException($e);
+            $this->logError('Error soft deleting user', ['user_id' => $id, 'error' => $e->getMessage()]);
+            return ResponseHelper::error('Error al eliminar el usuario: ' . $e->getMessage());
+        }
+    }
+
+    public function forceDeleteUser(int $id): array
+    {
+        $this->logInfo('Force deleting user', ['user_id' => $id]);
+
+        try {
+            $deleted = $this->userRepository->forceDelete($id);
+
+            if (!$deleted) {
+                return ResponseHelper::notFound('Usuario no encontrado');
+            }
+
+            $this->logInfo('User force deleted successfully', ['user_id' => $id]);
+
+            return ResponseHelper::success([], 'Usuario eliminado permanentemente');
+        } catch (\Exception $e) {
+            $this->logError('Error force deleting user', ['user_id' => $id, 'error' => $e->getMessage()]);
+            return ResponseHelper::error('Error al eliminar permanentemente el usuario: ' . $e->getMessage());
         }
     }
 
     /**
-     * Restore a soft deleted user
+     * ✅ NUEVO: RESTAURAR USUARIO
      */
     public function restoreUser(int $id): array
     {
+        $this->logInfo('Restoring user', ['user_id' => $id]);
+
         try {
-            $user = $this->user->withTrashed()->find($id);
+            $user = $this->userRepository->restore($id);
 
             if (!$user) {
-                return $this->notFoundResponse('User not found');
+                return ResponseHelper::notFound('Usuario eliminado no encontrado');
             }
 
-            if (!$user->trashed()) {
-                return $this->errorResponse('User is not deleted', 400);
-            }
+            $userDTO = UserMapper::modelToDTO($user);
 
-            DB::beginTransaction();
+            $this->logInfo('User restored successfully', ['user_id' => $user->id]);
 
-            $user->restore();
-            $user->load('role');
-
-            DB::commit();
-
-            return $this->successResponse($user, 'User restored successfully');
-
+            return ResponseHelper::success($userDTO->toArray(), 'Usuario restaurado exitosamente');
         } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Error restoring user: ' . $e->getMessage());
-            return $this->handleException($e);
-        }
-    }
-
-    /**
-     * Permanently delete a user
-     */
-    public function forceDeleteUser(int $id): array
-    {
-        try {
-            $user = $this->user->withTrashed()->find($id);
-
-            if (!$user) {
-                return $this->notFoundResponse('User not found');
-            }
-
-            DB::beginTransaction();
-
-            $user->forceDelete(); // Permanent delete
-
-            DB::commit();
-
-            return $this->successResponse([], 'User permanently deleted');
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Error force deleting user: ' . $e->getMessage());
-            return $this->handleException($e);
-        }
-    }
-
-    /**
-     * Change user password
-     */
-    public function changePassword(int $id, array $data): array
-    {
-        try {
-            $user = $this->user->active()->find($id);
-
-            if (!$user) {
-                return $this->notFoundResponse('User not found');
-            }
-
-            // Verificar contraseña actual
-            if (!Hash::check($data['current_password'], $user->password)) {
-                return $this->errorResponse('Current password is incorrect', 400);
-            }
-
-            DB::beginTransaction();
-
-            $user->update(['password' => $data['new_password']]);
-
-            DB::commit();
-
-            return $this->successResponse([], 'Password changed successfully');
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Error changing password: ' . $e->getMessage());
-            return $this->handleException($e);
+            $this->logError('Error restoring user', ['user_id' => $id, 'error' => $e->getMessage()]);
+            return ResponseHelper::error('Error al restaurar el usuario: ' . $e->getMessage());
         }
     }
 }

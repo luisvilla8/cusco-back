@@ -75,6 +75,21 @@ class ResponseHelper
         return self::error($message, Response::HTTP_CONFLICT);
     }
 
+    public static function badRequest(string $message = 'Solicitud incorrecta'): array
+    {
+        return self::error($message, Response::HTTP_BAD_REQUEST);
+    }
+
+    public static function unprocessableEntity(string $message = 'Datos no procesables', array $errors = []): array
+    {
+        return self::error($message, Response::HTTP_UNPROCESSABLE_ENTITY, $errors);
+    }
+
+    public static function internalServerError(string $message = 'Error interno del servidor'): array
+    {
+        return self::error($message, Response::HTTP_INTERNAL_SERVER_ERROR);
+    }
+
   
     public static function paginated($data, $paginator, string $message = 'Datos obtenidos exitosamente'): array
     {
