@@ -162,14 +162,42 @@ class TransactionPayment extends Model
         $prefix = 'PAY';
         $date = now()->format('dmy'); // Formato: 060825
         
-        // ✅ OBTENER CONTEO DIARIO MÁS ATTEMPT PARA EVITAR DUPLICADOS
-        $dailyCount = static::whereDate('created_at', now())
-            ->whereNull('deleted_at')
+        // ✅ OBTENER CONTEO DIARIO INCLUYENDO SOFT DELETED PARA EVITAR DUPLICADOS
+        $dailyCount = static::withTrashed() // ✅ INCLUIR SOFT DELETED
+            ->whereDate('created_at', now())
             ->count() + 1 + $attempt;
         
         $sequentialNumber = str_pad($dailyCount, 4, '0', STR_PAD_LEFT);
+        $proposedCode = "{$prefix}-{$date}-{$sequentialNumber}";
         
-        return "{$prefix}-{$date}-{$sequentialNumber}";
+        // ✅ VERIFICAR QUE EL CÓDIGO NO EXISTA (INCLUYENDO SOFT DELETED)
+        $exists = static::withTrashed()
+            ->where('code', $proposedCode)
+            ->exists();
+        
+        // ✅ SI EXISTE, INTENTAR CON EL SIGUIENTE NÚMERO
+        if ($exists && $attempt < 100) {
+            return $this->generateCode($attempt + 1);
+        }
+        
+        // ✅ SI DESPUÉS DE 100 INTENTOS SIGUE FALLANDO, USAR TIMESTAMP
+        if ($attempt >= 100) {
+            $timestamp = now()->format('His'); // HHMMSS
+            $proposedCode = "{$prefix}-{$date}-{$timestamp}";
+            
+            // ✅ VERIFICACIÓN FINAL CON TIMESTAMP
+            $timestampExists = static::withTrashed()
+                ->where('code', $proposedCode)
+                ->exists();
+                
+            if ($timestampExists) {
+                // ✅ ÚLTIMO RECURSO: AGREGAR MICROSEGUNDOS
+                $microtime = substr(microtime(true) * 1000, -3);
+                $proposedCode = "{$prefix}-{$date}-{$timestamp}{$microtime}";
+            }
+        }
+        
+        return $proposedCode;
     }
 
     public function isActive(): bool

@@ -11,40 +11,97 @@ class TransactionMapper
 {
     public static function modelToDTO(Transaction $transaction): TransactionDTO
     {
-        // ✅ OBTENER INFORMACIÓN DE DEUDA CORREGIDA
-        $debtInfo = $transaction->calculateDebtInfo();
-        
-        // ✅ MANEJAR DEVOLUCIONES ANIDADAS VS REFERENCIA A ORIGINAL
-        $returns = [];
-        $originalTransaction = null;
-        
+        // ✅ PARA DEVOLUCIONES: NO CALCULAR DEUDA PROPIA, USAR INFO DE LA ORIGINAL
         if ($transaction->isReturn()) {
-            // ✅ ES UNA DEVOLUCIÓN: incluir referencia a la transacción original
-            if ($transaction->originalTransaction) {
-                $originalTransaction = [
-                    'id' => $transaction->originalTransaction->id,
-                    'code' => $transaction->originalTransaction->code,
-                    'total' => (float) $transaction->originalTransaction->total,
-                    'date' => $transaction->originalTransaction->date->format('Y-m-d'),
-                    'agent_name' => $transaction->originalTransaction->agent?->name ?? 'N/A',
-                    'transaction_type_name' => $transaction->originalTransaction->transactionType?->name ?? 'N/A'
+            $originalTransaction = $transaction->originalTransaction;
+
+            if ($originalTransaction) {
+                // ✅ CALCULAR DEUDA DE LA TRANSACCIÓN ORIGINAL DESPUÉS DE ESTA DEVOLUCIÓN
+                $originalDebtInfo = $originalTransaction->calculateDebtInfo();
+
+                // ✅ INFO ESPECÍFICA DE LA DEVOLUCIÓN
+                $returnedAmount = abs($transaction->total);
+                $refundedAmount = abs($transaction->transactionPayments->sum('amount_paid'));
+
+                $debtInfo = [
+                    'original_total' => (float) $originalTransaction->total,
+                    'total_returned' => $returnedAmount, // Solo esta devolución
+                    'total_refunded' => $refundedAmount, // Solo reembolso de esta devolución
+                    'net_total' => $returnedAmount, // Total de esta devolución
+                    'amount_paid' => 0.0, // Las devoluciones no "pagan"
+                    'current_debt' => (float) $originalDebtInfo['current_debt'], // ✅ DEUDA DE LA ORIGINAL
+                    'payment_surplus' => (float) $originalDebtInfo['payment_surplus'], // ✅ SUPERÁVIT DE LA ORIGINAL
                 ];
+
+                // ✅ REFERENCIA A TRANSACCIÓN ORIGINAL
+                $originalTransactionRef = [
+                    'id' => $originalTransaction->id,
+                    'code' => $originalTransaction->code,
+                    'total' => (float) $originalTransaction->total,
+                    'date' => $originalTransaction->date->format('Y-m-d'),
+                    'agent_name' => $originalTransaction->agent?->name ?? 'N/A',
+                    'transaction_type_name' => $originalTransaction->transactionType?->name ?? 'N/A'
+                ];
+
+                return new TransactionDTO(
+                    id: $transaction->id,
+                    code: $transaction->code,
+                    agentId: $transaction->agent_id,
+                    agentName: $transaction->agent?->name ?? 'N/A',
+                    userId: $transaction->user_id,
+                    userName: $transaction->user?->name ?? 'N/A',
+                    zoneId: $transaction->zone_id,
+                    zoneName: $transaction->zone?->name ?? 'N/A',
+                    transactionTypeId: $transaction->transaction_type_id,
+                    transactionTypeName: $transaction->transactionType?->name ?? 'N/A',
+                    description: $transaction->description,
+                    date: $transaction->date->format('Y-m-d'),
+                    total: (float) $transaction->total, // Negativo para devoluciones
+                    amountPaid: (float) $transaction->amount_paid, // Debería ser 0
+                    deliveryStatus: $transaction->delivery_status,
+                    paymentStatus: $transaction->payment_status,
+                    tripId: $transaction->trip_id,
+                    // ✅ USAR CÁLCULOS CORREGIDOS PARA DEVOLUCIONES
+                    currentDebt: $debtInfo['current_debt'],
+                    paymentSurplus: $debtInfo['payment_surplus'],
+                    netTotal: $debtInfo['net_total'],
+                    totalReturned: $debtInfo['total_returned'],
+                    totalRefunded: $debtInfo['total_refunded'],
+                    details: self::mapDetails($transaction),
+                    payments: self::mapPayments($transaction),
+                    returns: [], // Las devoluciones no tienen sub-devoluciones
+                    relationTo: $transaction->relation_to,
+                    originalTransaction: $originalTransactionRef,
+                    canBeEdited: $transaction->canBeEdited(),
+                    canBeDelivered: $transaction->canBeDelivered(),
+                    canReceivePayment: $transaction->canReceivePayment(),
+                    createdAt: $transaction->created_at->format('Y-m-d H:i:s'),
+                    updatedAt: $transaction->updated_at->format('Y-m-d H:i:s'),
+                );
             }
-        } else {
-            // ✅ ES TRANSACCIÓN ORIGINAL: incluir devoluciones anidadas
-            $returns = $transaction->returns()
-                ->with([
-                    'agent', 'user', 'transactionType',
-                    'transactionDetails.product.measureType', 
-                    'transactionPayments.paymentMethod'
-                ])
-                ->get()
-                ->map(function ($return) {
-                    return self::mapReturnToNestedArray($return);
-                })
-                ->toArray();
         }
-        
+
+        // ✅ PARA TRANSACCIONES ORIGINALES: CALCULAR DEUDA NORMALMENTE
+        $debtInfo = $transaction->calculateDebtInfo();
+
+        // ✅ MANEJAR DEVOLUCIONES ANIDADAS PARA TRANSACCIONES ORIGINALES
+        $returns = $transaction->returns()
+            ->whereNot('delivery_status', 'CANCELLED')
+            ->whereNot('payment_status', 'CANCELLED')
+            ->whereNull('deleted_at')
+            ->with([
+                'agent',
+                'user',
+                'transactionType',
+                'transactionDetails.product.measureType',
+                'transactionPayments.paymentMethod'
+            ])
+            ->get()
+            ->map(function ($return) {
+                return self::mapReturnToNestedArray($return);
+            })
+            ->toArray();
+
         return new TransactionDTO(
             id: $transaction->id,
             code: $transaction->code,
@@ -63,19 +120,17 @@ class TransactionMapper
             deliveryStatus: $transaction->delivery_status,
             paymentStatus: $transaction->payment_status,
             tripId: $transaction->trip_id,
-            // ✅ USAR VALORES CALCULADOS CORREGIDOS
+            // ✅ USAR VALORES CALCULADOS CORRECTOS
             currentDebt: (float) $debtInfo['current_debt'],
-            paymentSurplus: (float) $debtInfo['payment_surplus'], 
+            paymentSurplus: (float) $debtInfo['payment_surplus'],
             netTotal: (float) $debtInfo['net_total'],
             totalReturned: (float) $debtInfo['total_returned'],
-            totalRefunded: (float) ($debtInfo['total_refunded'] ?? 0),
+            totalRefunded: (float) $debtInfo['total_refunded'],
             details: self::mapDetails($transaction),
             payments: self::mapPayments($transaction),
-            // ✅ DEVOLUCIONES ANIDADAS O REFERENCIA A ORIGINAL
             returns: $returns,
             relationTo: $transaction->relation_to,
-            originalTransaction: $originalTransaction,
-            // ✅ USAR MÉTODOS QUE AHORA EXISTEN
+            originalTransaction: null, // Solo para devoluciones
             canBeEdited: $transaction->canBeEdited(),
             canBeDelivered: $transaction->canBeDelivered(),
             canReceivePayment: $transaction->canReceivePayment(),
@@ -84,39 +139,45 @@ class TransactionMapper
         );
     }
 
-    // ✅ NUEVO MÉTODO: MAPEAR DEVOLUCIÓN A ARRAY ANIDADO (SIN DTO COMPLETO)
+
+    // ✅ MÉTODO CORREGIDO PARA MAPEAR DEVOLUCIONES CON REEMBOLSOS
     private static function mapReturnToNestedArray(Transaction $return): array
     {
-        $debtInfo = $return->calculateDebtInfo();
-        
+        // ✅ CALCULAR REEMBOLSO CORRECTAMENTE
+        $refundedAmount = abs($return->transactionPayments->sum('amount_paid'));
+
         return [
             'id' => $return->id,
             'code' => $return->code,
             'description' => $return->description,
             'date' => $return->date->format('Y-m-d'),
             'total' => (float) $return->total, // Negativo para devoluciones
-            'amount_paid' => (float) $return->amount_paid, // 0 para devoluciones en transaction
+            'amount_paid' => (float) $return->amount_paid, // Para transaction (debería ser 0)
             'delivery_status' => $return->delivery_status,
             'payment_status' => $return->payment_status,
             'transaction_type_name' => $return->transactionType?->name ?? 'N/A',
-            
-            // ✅ INFORMACIÓN ESPECÍFICA DE LA DEVOLUCIÓN
+
+            // ✅ INFORMACIÓN ESPECÍFICA DE LA DEVOLUCIÓN CORREGIDA
             'returned_amount' => abs((float) $return->total), // Monto devuelto (positivo)
-            'refunded_amount' => (float) $return->transactionPayments->sum('amount_paid'), // Dinero reembolsado
+            'refunded_amount' => $refundedAmount, // ✅ DINERO REALMENTE REEMBOLSADO
             'net_return_amount' => abs((float) $return->total), // Para mostrar en UI
-            
+
             // ✅ DETALLES Y PAGOS DE LA DEVOLUCIÓN
             'details' => self::mapDetails($return),
             'payments' => self::mapPayments($return),
-            
+
             // ✅ METADATA
             'created_at' => $return->created_at->format('Y-m-d H:i:s'),
             'updated_at' => $return->updated_at->format('Y-m-d H:i:s'),
             'user_name' => $return->user?->name ?? 'N/A',
-            
-            // ✅ INFORMACIÓN FORMATEADA
+
+            // ✅ INFORMACIÓN FORMATEADA CORREGIDA
             'formatted_returned_amount' => 'S/ ' . number_format(abs($return->total), 2),
-            'formatted_refunded_amount' => 'S/ ' . number_format($return->transactionPayments->sum('amount_paid'), 2),
+            'formatted_refunded_amount' => 'S/ ' . number_format($refundedAmount, 2), // ✅ USAR CÁLCULO CORRECTO
+
+            // ✅ INFORMACIÓN ADICIONAL PARA DEBUG
+            'has_refund' => $refundedAmount > 0,
+            'refund_payments_count' => $return->transactionPayments->count(),
         ];
     }
 

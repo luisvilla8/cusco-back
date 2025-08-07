@@ -64,47 +64,102 @@ class UpdateTransactionRequest extends FormRequest
     public function withValidator($validator)
     {
         $validator->after(function ($validator) {
-            // ✅ VALIDAR AGENT_ID SEGÚN TRANSACTION_TYPE_ID TAMBIÉN EN UPDATE
-            $agentId = $this->input('agent_id');
-            $transactionTypeId = $this->input('transaction_type_id');
+            // ✅ OBTENER ID DE LA TRANSACCIÓN QUE SE ESTÁ ACTUALIZANDO
+            $transactionId = $this->route('id');
             
-            if ($agentId && $transactionTypeId) {
-                try {
-                    $agent = \App\Models\Agent::with('agentType')->find($agentId);
-                    $transactionType = \App\Models\TransactionType::find($transactionTypeId);
+            // ✅ VALIDAR PRECIOS ACTUALIZADOS Y STOCK CORREGIDO
+            if ($this->has('details')) {
+                $details = $this->input('details', []);
+                $zoneId = $this->input('zone_id');
+                
+                // Si no se proporciona zona en la actualización, obtenerla de la transacción existente
+                if (!$zoneId) {
+                    $transaction = \App\Models\Transaction::find($transactionId);
+                    $zoneId = $transaction?->zone_id;
+                }
+                
+                // ✅ OBTENER TRANSACCIÓN ACTUAL PARA VERIFICAR TIPO Y DETALLES EXISTENTES
+                $currentTransaction = null;
+                $oldDetails = [];
+                
+                if ($transactionId) {
+                    $currentTransaction = \App\Models\Transaction::with(['transactionDetails.product', 'transactionType'])->find($transactionId);
                     
-                    if (!$agent || !$transactionType) {
-                        return; // Validación básica de existencia ya maneja esto
-                    }
-                    
-                    $transactionCode = strtoupper($transactionType->code);
-                    $agentTypeName = strtolower($agent->agentType?->name ?? '');
-                    
-                    if ($transactionCode === 'SALE') {
-                        if (!str_contains($agentTypeName, 'cliente')) {
-                            $validator->errors()->add('agent_id', 
-                                "Para ventas, debe seleccionar un cliente. El agente '{$agent->name}' es de tipo '{$agent->agentType?->name}'."
-                            );
+                    if ($currentTransaction) {
+                        // ✅ OBTENER DETALLES ACTUALES AGRUPADOS POR PRODUCTO
+                        foreach ($currentTransaction->transactionDetails as $oldDetail) {
+                            $productId = $oldDetail->product_id;
+                            $oldDetails[$productId] = ($oldDetails[$productId] ?? 0) + $oldDetail->quantity;
                         }
-                    } elseif ($transactionCode === 'PURCHASE') {
-                        if (!str_contains($agentTypeName, 'proveedor')) {
-                            $validator->errors()->add('agent_id', 
-                                "Para compras, debe seleccionar un proveedor. El agente '{$agent->name}' es de tipo '{$agent->agentType?->name}'."
-                            );
+                    }
+                }
+                
+                if (!empty($details) && $zoneId && $currentTransaction) {
+                    foreach ($details as $index => $detail) {
+                        $productId = $detail['product_id'] ?? null;
+                        
+                        if ($productId) {
+                            $product = \App\Models\Product::active()->find($productId);
+                            
+                            if ($product) {
+                                // Obtener precio actual según la zona
+                                $currentPrice = $this->getProductPriceForZone($productId, $zoneId);
+                                $sentPrice = (float) ($detail['price'] ?? 0);
+                                
+                                if (abs($sentPrice - $currentPrice) > 0.01) {
+                                    $validator->errors()->add(
+                                        "details.{$index}.price", 
+                                        "El precio del producto '{$product->name}' ha cambiado. Precio actual: S/ {$currentPrice}, precio enviado: S/ {$sentPrice}."
+                                    );
+                                }
+                                
+                                // ✅ VALIDAR STOCK CORREGIDO - SOLO PARA VENTAS PENDING
+                                if ($currentTransaction->isSale() && $currentTransaction->isDeliveryPending()) {
+                                    $newQuantity = (float) ($detail['quantity'] ?? 0);
+                                    $oldQuantityForThisProduct = $oldDetails[$productId] ?? 0;
+                                    
+                                    // ✅ CALCULAR STOCK DISPONIBLE CONSIDERANDO LA LIBERACIÓN DE LA RESERVA ACTUAL
+                                    $currentReservedStock = $product->reserved_stock;
+                                    $stockAfterRelease = $product->stock - ($currentReservedStock - $oldQuantityForThisProduct);
+                                    $availableStock = $stockAfterRelease;
+                                    
+                                    \Log::info('Stock validation for update', [
+                                        'product_id' => $productId,
+                                        'product_name' => $product->name,
+                                        'transaction_id' => $transactionId,
+                                        'total_stock' => $product->stock,
+                                        'current_reserved_stock' => $currentReservedStock,
+                                        'old_quantity_for_product' => $oldQuantityForThisProduct,
+                                        'new_quantity' => $newQuantity,
+                                        'stock_after_release' => $stockAfterRelease,
+                                        'available_stock' => $availableStock,
+                                        'calculation' => "stock({$product->stock}) - (reserved({$currentReservedStock}) - old_quantity({$oldQuantityForThisProduct})) = {$availableStock}"
+                                    ]);
+                                    
+                                    if ($availableStock < $newQuantity) {
+                                        $validator->errors()->add(
+                                            "details.{$index}.quantity", 
+                                            "Stock disponible insuficiente para {$product->name}. " .
+                                            "Stock total: {$product->stock}, reservado actual: {$currentReservedStock}, " .
+                                            "cantidad actual del producto: {$oldQuantityForThisProduct}, " .
+                                            "disponible después de liberar reserva: {$availableStock}, " .
+                                            "cantidad solicitada: {$newQuantity}"
+                                        );
+                                    } else {
+                                        \Log::info('Stock validation passed', [
+                                            'product_id' => $productId,
+                                            'available_stock' => $availableStock,
+                                            'requested_quantity' => $newQuantity
+                                        ]);
+                                    }
+                                }
+                            }
                         }
                     }
-                    
-                } catch (\Exception $e) {
-                    \Log::error("Error validating agent type in update", [
-                        'agent_id' => $agentId,
-                        'transaction_type_id' => $transactionTypeId,
-                        'error' => $e->getMessage()
-                    ]);
-                    
-                    $validator->errors()->add('agent_id', 'Error al validar el tipo de agente.');
                 }
             }
             
+            // ✅ RESTO DE VALIDACIONES EXISTENTES...
             $user = $this->user();
             
             // ✅ VALIDACIÓN DE ZONA PARA VENDEDORES (SOLO SI SE ESTÁ ACTUALIZANDO LA ZONA)
@@ -133,51 +188,6 @@ class UpdateTransactionRequest extends FormRequest
                                 "payments.{$index}.payment_method_id", 
                                 "El método de pago está inactivo o no existe"
                             );
-                        }
-                    }
-                }
-            }
-            
-            // ✅ VALIDAR PRECIOS ACTUALIZADOS
-            if ($this->has('details')) {
-                $details = $this->input('details', []);
-                $zoneId = $this->input('zone_id');
-                
-                // Si no se proporciona zona en la actualización, obtenerla de la transacción existente
-                if (!$zoneId) {
-                    $transactionId = $this->route('id');
-                    $transaction = \App\Models\Transaction::find($transactionId);
-                    $zoneId = $transaction?->zone_id;
-                }
-                
-                if (!empty($details) && $zoneId) {
-                    foreach ($details as $index => $detail) {
-                        $productId = $detail['product_id'] ?? null;
-                        
-                        if ($productId) {
-                            $product = \App\Models\Product::active()->find($productId);
-                            
-                            if ($product) {
-                                // Obtener precio actual según la zona
-                                $currentPrice = $this->getProductPriceForZone($productId, $zoneId);
-                                $sentPrice = (float) ($detail['price'] ?? 0);
-                                
-                                if (abs($sentPrice - $currentPrice) > 0.01) {
-                                    $validator->errors()->add(
-                                        "details.{$index}.price", 
-                                        "El precio del producto '{$product->name}' ha cambiado. Precio actual: S/ {$currentPrice}, precio enviado: S/ {$sentPrice}."
-                                    );
-                                }
-                                
-                                // Validar stock
-                                $quantity = (float) ($detail['quantity'] ?? 0);
-                                if (!$product->hasStock($quantity)) {
-                                    $validator->errors()->add(
-                                        "details.{$index}.quantity", 
-                                        "Stock insuficiente para {$product->name}. Stock disponible: {$product->stock}"
-                                    );
-                                }
-                            }
                         }
                     }
                 }

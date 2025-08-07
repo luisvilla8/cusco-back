@@ -20,24 +20,33 @@ class TransactionRepository
     {
         $query = $this->model->with(['agent', 'user', 'zone', 'transactionType', 'trip']);
 
+        // ✅ EXCLUIR TRANSACCIONES CANCELADAS Y SOFT DELETED SIEMPRE
+        $query->whereNot('delivery_status', 'CANCELLED')
+            ->whereNot('payment_status', 'CANCELLED')
+            ->whereNull('deleted_at'); // ✅ EXCLUIR SOFT DELETED
+
         // ✅ POR DEFECTO: EXCLUIR DEVOLUCIONES (SOLO MOSTRAR TRANSACCIONES ORIGINALES)
         if (!isset($filters['include_returns']) || $filters['include_returns'] === false) {
             $query->whereNull('relation_to'); // Solo transacciones originales
-            
-            Log::info('Excluding returns from transaction list', [
-                'include_returns' => $filters['include_returns'] ?? false
-            ]);
         } else {
-            Log::info('Including returns in transaction list', [
-                'include_returns' => $filters['include_returns']
-            ]);
+            // ✅ SI SE INCLUYEN DEVOLUCIONES, EXCLUIR LAS CANCELADAS Y SOFT DELETED
+            $query->where(function ($q) {
+                $q->whereNull('relation_to') // Transacciones originales
+                    ->orWhere(function ($returnQuery) {
+                        $returnQuery->whereNotNull('relation_to') // Es devolución
+                            ->whereNot('delivery_status', 'CANCELLED') // No cancelada
+                            ->whereNot('payment_status', 'CANCELLED')
+                            ->whereNull('deleted_at'); // ✅ No soft deleted
+                    });
+            });
         }
 
-        // ✅ FILTRO ESPECÍFICO PARA SOLO DEVOLUCIONES
+        // ✅ FILTRO ESPECÍFICO PARA SOLO DEVOLUCIONES ACTIVAS
         if (isset($filters['only_returns']) && $filters['only_returns'] === true) {
-            $query->whereNotNull('relation_to'); // Solo devoluciones
-            
-            Log::info('Showing only returns');
+            $query->whereNotNull('relation_to') // Solo devoluciones
+                ->whereNot('delivery_status', 'CANCELLED') // No canceladas
+                ->whereNot('payment_status', 'CANCELLED')
+                ->whereNull('deleted_at'); // ✅ No soft deleted
         }
 
         // Apply other filters
@@ -60,7 +69,6 @@ class TransactionRepository
         // ✅ FILTRO DE TIPO DE TRANSACCIÓN MEJORADO
         if (!empty($filters['transaction_type'])) {
             if (is_array($filters['transaction_type'])) {
-                // Array de tipos: ['SALE', 'PURCHASE'] o ['RETURN_SALE', 'RETURN_PURCHASE']
                 $query->whereHas('transactionType', function ($q) use ($filters) {
                     $q->whereIn('code', $filters['transaction_type']);
                 });
@@ -102,10 +110,12 @@ class TransactionRepository
         if (!empty($filters['search'])) {
             $query->where(function ($q) use ($filters) {
                 $q->where('code', 'LIKE', "%{$filters['search']}%")
-                  ->orWhere('description', 'LIKE', "%{$filters['search']}%")
-                  ->orWhereHas('agent', fn($agent) => 
-                      $agent->where('name', 'LIKE', "%{$filters['search']}%")
-                  );
+                    ->orWhere('description', 'LIKE', "%{$filters['search']}%")
+                    ->orWhereHas(
+                        'agent',
+                        fn($agent) =>
+                        $agent->where('name', 'LIKE', "%{$filters['search']}%")
+                    );
             });
         }
 
@@ -124,7 +134,7 @@ class TransactionRepository
     {
         return $this->model->with([
             'agent',
-            'user', 
+            'user',
             'zone',
             'transactionType',
             'trip',
@@ -133,16 +143,16 @@ class TransactionRepository
         ])->find($id);
     }
 
-    
+
 
     public function createWithDetailsAndPayments(array $data): Transaction
     {
         return DB::transaction(function () use ($data) {
             try {
-                // ✅ VALIDACIONES SOLO PARA TRANSACCIONES ORIGINALES
-                if (empty($data['relation_to'])) { // Solo validar si no es devolución
+                // ✅ VALIDACIONES PARA TRANSACCIONES ORIGINALES
+                if (empty($data['relation_to'])) {
                     if (!empty($data['details'])) {
-                        $zoneId = $data['zone_id'] ?? null;
+                        $transactionType = \App\Models\TransactionType::find($data['transaction_type_id']);
                         
                         foreach ($data['details'] as $detail) {
                             $product = Product::active()->find($detail['product_id']);
@@ -150,72 +160,62 @@ class TransactionRepository
                                 throw new \InvalidArgumentException("El producto con ID {$detail['product_id']} no existe o está inactivo.");
                             }
                             
-                            // ✅ OBTENER PRECIO SEGÚN LA ZONA
-                            $currentPrice = $this->getProductPriceForZone($detail['product_id'], $zoneId);
-                            $sentPrice = (float) $detail['price'];
-                            
-                            // ✅ COMPARAR PRECIOS SOLO PARA VENTAS/COMPRAS NUEVAS
-                            if (abs($sentPrice - $currentPrice) > 0.01) {
-                                $priceSource = $this->getPriceSourceDescription($detail['product_id'], $zoneId);
-                                throw new \InvalidArgumentException(
-                                    "El precio del producto '{$product->name}' ha cambiado. Precio actual: S/ {$currentPrice} ({$priceSource}), precio enviado: S/ {$sentPrice}"
-                            );
+                            // ✅ VALIDAR STOCK DISPONIBLE PARA VENTAS (REGLA 1)
+                            if ($transactionType && $transactionType->code === 'SALE') {
+                                $availableStock = $product->stock - $product->reserved_stock;
+                                if ($availableStock < $detail['quantity']) {
+                                    throw new \InvalidArgumentException(
+                                        "Stock disponible insuficiente para {$product->name}. " .
+                                        "Stock total: {$product->stock}, reservado: {$product->reserved_stock}, " .
+                                        "disponible: {$availableStock}, cantidad solicitada: {$detail['quantity']}"
+                                    );
+                                }
                             }
                             
-                            // ✅ VALIDAR STOCK SOLO PARA VENTAS
-                            $transactionType = \App\Models\TransactionType::find($data['transaction_type_id']);
-                            if ($transactionType && $transactionType->code === 'SALE' && !$product->hasStock($detail['quantity'])) {
-                                throw new \InvalidArgumentException(
-                                    "Stock insuficiente para {$product->name}. Stock disponible: {$product->stock}, cantidad solicitada: {$detail['quantity']}"
-                                );
+                            // ✅ VALIDAR CANTIDADES POSITIVAS
+                            if ($detail['quantity'] <= 0) {
+                                throw new \InvalidArgumentException("La cantidad debe ser mayor a 0 para el producto {$product->name}");
+                            }
+                            
+                            if ($detail['price'] <= 0) {
+                                throw new \InvalidArgumentException("El precio debe ser mayor a 0 para el producto {$product->name}");
                             }
                         }
                     }
                 }
-                
+
                 // ✅ CALCULAR TOTALES
                 $total = $data['total'] ?? collect($data['details'])->sum(fn($detail) => $detail['price'] * $detail['quantity']);
                 $amountPaid = $data['amount_paid'] ?? collect($data['payments'] ?? [])->sum('amount_paid');
-                
-                $data['total'] = $total;
-                $data['amount_paid'] = $amountPaid;
 
-                // ✅ CREAR TRANSACTION - NO INCLUIR relation_to SI NO EXISTE
+                // ✅ CREAR DATOS DE LA TRANSACCIÓN (VARIABLE FALTANTE)
                 $transactionData = [
                     'agent_id' => $data['agent_id'],
                     'user_id' => $data['user_id'],
                     'zone_id' => $data['zone_id'],
                     'transaction_type_id' => $data['transaction_type_id'],
                     'date' => $data['date'],
-                    'total' => $data['total'],
-                    'amount_paid' => $data['amount_paid'],
+                    'total' => $total,
+                    'amount_paid' => $amountPaid,
                     'delivery_status' => $data['delivery_status'] ?? Transaction::DELIVERY_STATUS_PENDING,
                     'payment_status' => $data['payment_status'] ?? Transaction::PAYMENT_STATUS_PENDING,
                 ];
 
-                // ✅ AGREGAR CAMPOS OPCIONALES SOLO SI EXISTEN
+                // ✅ AGREGAR CAMPOS OPCIONALES
                 if (!empty($data['description'])) {
                     $transactionData['description'] = $data['description'];
                 }
-
                 if (!empty($data['trip_id'])) {
                     $transactionData['trip_id'] = $data['trip_id'];
                 }
-
-                // ✅ AGREGAR relation_to SOLO SI EXISTE (PARA DEVOLUCIONES)
                 if (!empty($data['relation_to'])) {
                     $transactionData['relation_to'] = $data['relation_to'];
                 }
 
-                Log::info('Creating transaction with data', [
-                    'transaction_data' => $transactionData,
-                    'has_relation_to' => !empty($data['relation_to']),
-                    'is_return' => !empty($data['relation_to'])
-                ]);
-
+                // ✅ CREAR TRANSACCIÓN
                 $transaction = $this->model->create($transactionData);
 
-                // ✅ CREAR TRANSACTION DETAILS
+                // ✅ CREAR DETALLES
                 foreach ($data['details'] as $detailData) {
                     TransactionDetail::create([
                         'transaction_id' => $transaction->id,
@@ -225,7 +225,7 @@ class TransactionRepository
                     ]);
                 }
 
-                // ✅ CREAR TRANSACTION PAYMENTS (SI HAY)
+                // ✅ CREAR PAGOS
                 if (!empty($data['payments'])) {
                     foreach ($data['payments'] as $paymentData) {
                         TransactionPayment::create([
@@ -237,31 +237,35 @@ class TransactionRepository
                     }
                 }
 
-                // ✅ RECARGAR TRANSACCIÓN CON RELACIONES
+                // ✅ RECARGAR TRANSACCIÓN
                 $transaction = $transaction->fresh()->load([
-                    'agent', 'user', 'zone', 'transactionType', 'trip',
-                    'transactionDetails.product.measureType', 
+                    'agent',
+                    'user',
+                    'zone',
+                    'transactionType',
+                    'trip',
+                    'transactionDetails.product.measureType',
                     'transactionPayments.paymentMethod'
                 ]);
 
-                // ✅ CREAR EGRESO SOLO SI ES COMPRA ORIGINAL (NO DEVOLUCIÓN)
-                if (empty($data['relation_to']) && $this->isPurchaseTransaction($transaction)) {
-                    $this->createPurchaseEgress($transaction);
+                // ✅ APLICAR REGLAS DE STOCK SEGÚN TIPO
+                if (empty($data['relation_to'])) {
+                    if ($this->isSaleTransaction($transaction) && $transaction->isDeliveryPending()) {
+                        // ✅ REGLA 1: VENTA PENDING - Reservar stock
+                        $transaction->reserveStockForSale();
+                    }
+
+                    if ($this->isPurchaseTransaction($transaction)) {
+                        $this->createPurchaseEgress($transaction);
+                    }
                 }
 
                 return $transaction;
-                
             } catch (\Exception $e) {
-                Log::error('Error creating transaction', [
-                    'error' => $e->getMessage(),
-                    'data' => $data,
-                    'trace' => $e->getTraceAsString()
-                ]);
                 throw $e;
             }
         });
     }
-
     // ✅ MÉTODO HELPER PARA VALIDAR SI ES VENTA
     private function isSaleTransaction(Transaction $transaction): bool
     {
@@ -272,7 +276,7 @@ class TransactionRepository
     private function isPurchaseTransaction(Transaction $transaction): bool
     {
         $transactionType = $transaction->transactionType;
-        
+
         if (!$transactionType) {
             Log::error('Transaction type not found', [
                 'transaction_id' => $transaction->id,
@@ -280,10 +284,10 @@ class TransactionRepository
             ]);
             return false;
         }
-        
+
         $code = strtoupper(trim($transactionType->code));
         $name = strtoupper(trim($transactionType->name));
-        
+
         Log::info('Checking if transaction is purchase - DETAILED', [
             'transaction_id' => $transaction->id,
             'transaction_type_id' => $transaction->transaction_type_id,
@@ -292,18 +296,18 @@ class TransactionRepository
             'raw_code' => $transactionType->code,
             'raw_name' => $transactionType->name
         ]);
-        
+
         // ✅ VERIFICAR TANTO CODE COMO NAME
         $isPurchase = in_array($code, ['PURCHASE', 'COMPRA', 'BUY', 'PURCHASE_ORDER']) ||
-                      in_array($name, ['COMPRA', 'PURCHASE']);
-        
+            in_array($name, ['COMPRA', 'PURCHASE']);
+
         Log::info('Purchase check result', [
             'transaction_id' => $transaction->id,
             'is_purchase' => $isPurchase,
             'code_check' => in_array($code, ['PURCHASE', 'COMPRA', 'BUY', 'PURCHASE_ORDER']),
             'name_check' => in_array($name, ['COMPRA', 'PURCHASE'])
         ]);
-        
+
         return $isPurchase;
     }
 
@@ -358,8 +362,8 @@ class TransactionRepository
             // ✅ PREPARAR DATOS DEL EGRESO - USAR amount_paid
             $egressData = [
                 'name' => "Compra - {$transaction->code}",
-                'description' => $transaction->description ? 
-                    "Egreso automático por compra: {$transaction->description}" : 
+                'description' => $transaction->description ?
+                    "Egreso automático por compra: {$transaction->description}" :
                     "Egreso automático por compra #{$transaction->code}",
                 'amount' => $transaction->amount_paid, // ✅ USAR amount_paid
                 'date' => $transaction->date,
@@ -370,7 +374,7 @@ class TransactionRepository
             if ($transaction->agent_id) {
                 $egressData['agent_id'] = $transaction->agent_id;
             }
-            
+
             if ($transaction->zone_id) {
                 $egressData['zone_id'] = $transaction->zone_id;
             }
@@ -393,7 +397,6 @@ class TransactionRepository
                 'amount' => $egress->amount,
                 'date' => $egress->date->format('Y-m-d')
             ]);
-
         } catch (\Exception $e) {
             Log::error('=== ERROR CREATING PURCHASE EGRESS ===', [
                 'transaction_id' => $transaction->id,
@@ -401,7 +404,7 @@ class TransactionRepository
                 'error_file' => $e->getFile(),
                 'error_line' => $e->getLine()
             ]);
-            
+
             throw new \Exception("Error al crear egreso para compra: " . $e->getMessage());
         }
     }
@@ -416,313 +419,134 @@ class TransactionRepository
                     throw new \Exception('Transacción no encontrada');
                 }
 
-                Log::info('Updating transaction', [
-                    'transaction_id' => $id,
-                    'current_data' => [
-                        'agent_id' => $transaction->agent_id,
-                        'zone_id' => $transaction->zone_id,
-                        'description' => $transaction->description,
-                        'date' => $transaction->date,
-                        'total' => $transaction->total,
-                        'amount_paid' => $transaction->amount_paid
-                    ],
-                    'new_data' => $data
-                ]);
-
-                // ✅ VALIDACIONES SOLO PARA CAMPOS QUE SE ESTÁN ACTUALIZANDO
+                // ✅ ACTUALIZAR DETALLES CON REGLA 2 CORREGIDA
                 if (isset($data['details']) && !empty($data['details'])) {
-                    $zoneId = $data['zone_id'] ?? $transaction->zone_id;
+                    $oldDetails = [];
                     
-                    foreach ($data['details'] as $detail) {
-                        $product = Product::active()->find($detail['product_id']);
-                        if (!$product) {
-                            throw new \InvalidArgumentException("El producto con ID {$detail['product_id']} no existe o está inactivo.");
-                        }
-                        
-                        // ✅ OBTENER PRECIO SEGÚN LA ZONA
-                        $currentPrice = $this->getProductPriceForZone($detail['product_id'], $zoneId);
-                        $sentPrice = (float) $detail['price'];
-                        
-                        // ✅ VALIDAR PRECIOS SOLO SI HAY DIFERENCIA
-                        if (abs($sentPrice - $currentPrice) > 0.01) {
-                            $priceSource = $this->getPriceSourceDescription($detail['product_id'], $zoneId);
-                            Log::warning('Price mismatch detected', [
-                                'product_id' => $detail['product_id'],
-                                'product_name' => $product->name,
-                                'current_price' => $currentPrice,
-                                'sent_price' => $sentPrice,
-                                'price_source' => $priceSource
-                            ]);
-                            
-                            throw new \InvalidArgumentException(
-                                "El precio del producto '{$product->name}' ha cambiado. Precio actual: S/ {$currentPrice} ({$priceSource}), precio enviado: S/ {$sentPrice}"
-                            );
-                        }
-                        
-                        // ✅ VALIDAR STOCK SOLO PARA VENTAS
-                        if ($transaction->isSale() && !$product->hasStock($detail['quantity'])) {
-                            throw new \InvalidArgumentException(
-                                "Stock insuficiente para {$product->name}. Stock disponible: {$product->stock}, cantidad solicitada: {$detail['quantity']}"
-                            );
+                    // ✅ OBTENER DETALLES ANTERIORES AGRUPADOS POR PRODUCTO
+                    if ($transaction->isSale() && $transaction->isDeliveryPending()) {
+                        foreach ($transaction->transactionDetails as $oldDetail) {
+                            $productId = $oldDetail->product_id;
+                            $oldDetails[$productId] = ($oldDetails[$productId] ?? 0) + $oldDetail->quantity;
                         }
                     }
-                }
-
-                // ✅ ACTUALIZAR DATOS BÁSICOS DE LA TRANSACCIÓN
-                $updateData = [];
-                
-                if (isset($data['agent_id'])) {
-                    $updateData['agent_id'] = $data['agent_id'];
-                }
-                
-                if (isset($data['zone_id'])) {
-                    $updateData['zone_id'] = $data['zone_id'];
-                }
-                
-                if (isset($data['description'])) {
-                    $updateData['description'] = $data['description'];
-                }
-                
-                if (isset($data['date'])) {
-                    $updateData['date'] = $data['date'];
-                }
-
-                // ✅ ACTUALIZAR LA TRANSACCIÓN BÁSICA SI HAY CAMBIOS
-                if (!empty($updateData)) {
-                    $transaction->update($updateData);
-                    Log::info('Transaction basic data updated', [
-                        'transaction_id' => $id,
-                        'updated_fields' => array_keys($updateData)
-                    ]);
-                }
-
-                // ✅ ACTUALIZAR DETALLES SI SE PROPORCIONAN - MÉTODO CORREGIDO
-                if (isset($data['details']) && !empty($data['details'])) {
-                    Log::info('Updating transaction details', [
-                        'transaction_id' => $id,
-                        'old_details_count' => $transaction->transactionDetails()->count(),
-                        'new_details_count' => count($data['details'])
-                    ]);
-
-                    // ✅ ELIMINAR DETALLES EXISTENTES - FORZAR DELETE
+                    
+                    // ✅ VALIDAR NUEVOS DETALLES CONSIDERANDO LIBERACIÓN DE RESERVAS
+                    foreach ($data['details'] as $detailData) {
+                        $productId = $detailData['product_id'];
+                        $newQuantity = $detailData['quantity'];
+                        
+                        $product = Product::active()->find($productId);
+                        if (!$product) {
+                            throw new \InvalidArgumentException("El producto con ID {$productId} no existe o está inactivo.");
+                        }
+                        
+                        // ✅ VALIDAR STOCK DISPONIBLE PARA VENTAS CONSIDERANDO LIBERACIÓN
+                        if ($transaction->isSale() && $transaction->isDeliveryPending()) {
+                            $oldQuantityForProduct = $oldDetails[$productId] ?? 0;
+                            
+                            // ✅ CALCULAR STOCK DISPONIBLE DESPUÉS DE LIBERAR LA RESERVA ACTUAL
+                            $currentReservedStock = $product->reserved_stock;
+                            $availableStockAfterRelease = $product->stock - ($currentReservedStock - $oldQuantityForProduct);
+                            
+                            \Log::info('Stock validation during update', [
+                                'product_id' => $productId,
+                                'product_name' => $product->name,
+                                'total_stock' => $product->stock,
+                                'current_reserved' => $currentReservedStock,
+                                'old_quantity' => $oldQuantityForProduct,
+                                'new_quantity' => $newQuantity,
+                                'available_after_release' => $availableStockAfterRelease,
+                                'calculation' => "stock({$product->stock}) - (reserved({$currentReservedStock}) - old({$oldQuantityForProduct})) = {$availableStockAfterRelease}"
+                            ]);
+                            
+                            if ($availableStockAfterRelease < $newQuantity) {
+                                throw new \InvalidArgumentException(
+                                    "Stock disponible insuficiente para {$product->name}. " .
+                                    "Stock total: {$product->stock}, reservado actual: {$currentReservedStock}, " .
+                                    "cantidad actual: {$oldQuantityForProduct}, " .
+                                    "disponible después de liberar: {$availableStockAfterRelease}, " .
+                                    "cantidad solicitada: {$newQuantity}"
+                                );
+                            }
+                        }
+                    }
+                    
+                    // ✅ ELIMINAR DETALLES EXISTENTES
                     $transaction->transactionDetails()->forceDelete();
                     
-                    // ✅ ESPERAR UN MOMENTO PARA QUE SE PROCESE EL DELETE
-                    usleep(100000); // 0.1 segundos
-                    
-                    // ✅ CREAR NUEVOS DETALLES CON VALIDACIÓN MEJORADA
+                    // ✅ CREAR NUEVOS DETALLES
+                    $newDetails = [];
                     $totalCalculated = 0;
-                    foreach ($data['details'] as $index => $detailData) {
-                        try {
-                            // ✅ VERIFICAR QUE NO EXISTA UN DETALLE DUPLICADO
-                            $existingDetail = TransactionDetail::where('transaction_id', $transaction->id)
-                                ->where('product_id', $detailData['product_id'])
-                                ->first();
-                                
-                            if ($existingDetail) {
-                                Log::warning('Duplicate detail found, deleting before create', [
-                                    'transaction_id' => $transaction->id,
-                                    'product_id' => $detailData['product_id'],
-                                    'existing_detail_id' => $existingDetail->id
-                            ]);
-                                
-                                $existingDetail->forceDelete();
-                            }
-                            
-                            $newDetail = TransactionDetail::create([
-                                'transaction_id' => $transaction->id,
-                                'product_id' => $detailData['product_id'],
-                                'price' => $detailData['price'],
-                                'quantity' => $detailData['quantity']
-                            ]);
-                            
-                            $totalCalculated += $detailData['price'] * $detailData['quantity'];
-                            
-                            Log::info('Transaction detail created successfully', [
-                                'detail_id' => $newDetail->id,
-                                'transaction_id' => $transaction->id,
-                                'product_id' => $detailData['product_id'],
-                                'index' => $index
-                            ]);
-                            
-                        } catch (\Exception $detailError) {
-                            Log::error('Error creating transaction detail', [
-                                'transaction_id' => $transaction->id,
-                                'detail_index' => $index,
-                                'detail_data' => $detailData,
-                                'error' => $detailError->getMessage()
-                            ]);
-                            
-                            throw new \Exception("Error al crear detalle #{$index}: " . $detailError->getMessage());
-                        }
+                    
+                    foreach ($data['details'] as $detailData) {
+                        TransactionDetail::create([
+                            'transaction_id' => $transaction->id,
+                            'product_id' => $detailData['product_id'],
+                            'price' => $detailData['price'],
+                            'quantity' => $detailData['quantity']
+                        ]);
+                        
+                        $newDetails[] = [
+                            'product_id' => $detailData['product_id'],
+                            'quantity' => $detailData['quantity']
+                        ];
+                        
+                        $totalCalculated += $detailData['price'] * $detailData['quantity'];
                     }
 
                     // ✅ ACTUALIZAR EL TOTAL CALCULADO
                     $transaction->update(['total' => $totalCalculated]);
-                    
-                    Log::info('Transaction details updated successfully', [
-                        'transaction_id' => $id,
-                        'new_total' => $totalCalculated,
-                        'details_created' => count($data['details'])
-                    ]);
-                }
 
-                // ✅ ACTUALIZAR PAGOS SI SE PROPORCIONAN - MÉTODO CORREGIDO
-                if (isset($data['payments']) && is_array($data['payments'])) {
-                    Log::info('Updating transaction payments', [
-                        'transaction_id' => $id,
-                        'old_payments_count' => $transaction->transactionPayments()->count(),
-                        'new_payments_count' => count($data['payments'])
-                    ]);
-
-                    // ✅ ELIMINAR PAGOS EXISTENTES CON FORCE DELETE Y ESPERAR
-                    $existingPayments = $transaction->transactionPayments()->get();
-                    foreach ($existingPayments as $payment) {
-                        Log::info('Force deleting payment', [
-                            'payment_id' => $payment->id,
-                            'payment_code' => $payment->code,
-                            'transaction_id' => $id
-                        ]);
-                        $payment->forceDelete();
-                    }
-                    
-                    // ✅ ESPERAR MÁS TIEMPO PARA QUE SE PROCESE EL DELETE
-                    usleep(200000); // 0.2 segundos
-                    
-                    // ✅ VERIFICAR QUE NO QUEDEN PAGOS
-                    $remainingPayments = $transaction->transactionPayments()->count();
-                    if ($remainingPayments > 0) {
-                        Log::warning('Some payments still exist after deletion', [
-                            'transaction_id' => $id,
-                            'remaining_count' => $remainingPayments
-                        ]);
+                    // ✅ APLICAR REGLA 2: ACTUALIZAR RESERVAS CORRECTAMENTE
+                    if ($transaction->isSale() && $transaction->isDeliveryPending()) {
+                        $transaction = $transaction->fresh(['transactionDetails.product']);
                         
-                        // ✅ FORZAR ELIMINACIÓN DIRECTA EN DB
-                        DB::table('transaction_payments')
-                            ->where('transaction_id', $id)
-                            ->delete();
-                    }
-                    
-                    // ✅ CREAR NUEVOS PAGOS CON MANEJO DE ERRORES MEJORADO
-                    $totalPaid = 0;
-                    foreach ($data['payments'] as $index => $paymentData) {
-                        try {
-                            // ✅ GENERAR CÓDIGO ÚNICO MANUALMENTE SI ES NECESARIO
-                            $attempts = 0;
-                            $maxAttempts = 5;
-                            $paymentCode = null;
-                            
-                            do {
-                                $prefix = 'PAY';
-                                $date = now()->format('dmy');
-                                $dailyCount = TransactionPayment::whereDate('created_at', now())
-                                    ->whereNull('deleted_at')
-                                    ->count() + 1 + $attempts + $index;
-                                $sequentialNumber = str_pad($dailyCount, 4, '0', STR_PAD_LEFT);
-                                $paymentCode = "{$prefix}-{$date}-{$sequentialNumber}";
-                                
-                                $codeExists = TransactionPayment::where('code', $paymentCode)
-                                    ->whereNull('deleted_at')
-                                    ->exists();
-                                    
-                                $attempts++;
-                            } while ($codeExists && $attempts < $maxAttempts);
-                            
-                            if ($codeExists) {
-                                // ✅ ÚLTIMO RECURSO: AGREGAR TIMESTAMP
-                                $paymentCode = "{$prefix}-{$date}-" . now()->format('His') . "-{$index}";
-                            }
-                            
-                            Log::info('Creating payment with unique code', [
-                                'transaction_id' => $id,
-                                'payment_index' => $index,
-                                'generated_code' => $paymentCode,
-                                'attempts' => $attempts
-                            ]);
-                            
-                            $newPayment = TransactionPayment::create([
-                                'transaction_id' => $transaction->id,
-                                'payment_method_id' => $paymentData['payment_method_id'],
-                                'amount_paid' => $paymentData['amount_paid'],
-                                'description' => $paymentData['description'] ?? null,
-                                'code' => $paymentCode // ✅ ASIGNAR CÓDIGO MANUALMENTE
-                            ]);
-                            
-                            $totalPaid += $paymentData['amount_paid'];
-                            
-                            Log::info('Transaction payment created successfully', [
-                                'payment_id' => $newPayment->id,
-                                'payment_code' => $newPayment->code,
-                                'transaction_id' => $transaction->id,
-                                'amount' => $paymentData['amount_paid'],
-                                'index' => $index
-                            ]);
-                            
-                        } catch (\Exception $paymentError) {
-                            Log::error('Error creating transaction payment', [
-                                'transaction_id' => $transaction->id,
-                                'payment_index' => $index,
-                                'payment_data' => $paymentData,
-                                'error' => $paymentError->getMessage(),
-                                'trace' => $paymentError->getTraceAsString()
-                            ]);
-                            
-                            throw new \Exception("Error al crear pago #{$index}: " . $paymentError->getMessage());
+                        // ✅ CONVERTIR OLDDETAILS AL FORMATO ESPERADO
+                        $oldDetailsFormatted = [];
+                        foreach ($oldDetails as $productId => $quantity) {
+                            $oldDetailsFormatted[] = [
+                                'product_id' => $productId,
+                                'quantity' => $quantity
+                            ];
                         }
+                        
+                        $transaction->updateSaleReservations($oldDetailsFormatted, $newDetails);
                     }
-
-                    // ✅ ACTUALIZAR EL AMOUNT_PAID CALCULADO
-                    $transaction->update(['amount_paid' => $totalPaid]);
-                    
-                    Log::info('Transaction payments updated successfully', [
-                        'transaction_id' => $id,
-                        'new_amount_paid' => $totalPaid,
-                        'payments_created' => count($data['payments'])
-                    ]);
-                } else {
-                    // ✅ SI NO SE PROPORCIONAN PAGOS, RECALCULAR DESDE EXISTENTES
-                    $totalPaid = $transaction->transactionPayments()->sum('amount_paid');
-                    $transaction->update(['amount_paid' => $totalPaid]);
-                    
-                    Log::info('Transaction amount_paid recalculated from existing payments', [
-                        'transaction_id' => $id,
-                        'recalculated_amount_paid' => $totalPaid
-                    ]);
                 }
 
-                // ✅ RECARGAR TRANSACCIÓN CON RELACIONES
-                $updatedTransaction = $transaction->fresh()->load([
-                    'agent', 'user', 'zone', 'transactionType', 'trip',
-                    'transactionDetails.product.measureType', 
+                // ✅ ACTUALIZAR PAGOS SI SE PROPORCIONAN
+                if (isset($data['payments'])) {
+                    // Eliminar pagos existentes
+                    $transaction->transactionPayments()->forceDelete();
+
+                    // Crear nuevos pagos
+                    $totalPaid = 0;
+                    foreach ($data['payments'] as $paymentData) {
+                        TransactionPayment::create([
+                            'transaction_id' => $transaction->id,
+                            'payment_method_id' => $paymentData['payment_method_id'],
+                            'amount_paid' => $paymentData['amount_paid'],
+                            'description' => $paymentData['description'] ?? null
+                        ]);
+
+                        $totalPaid += $paymentData['amount_paid'];
+                    }
+
+                    // Actualizar amount_paid
+                    $transaction->update(['amount_paid' => $totalPaid]);
+                }
+
+                return $transaction->fresh()->load([
+                    'agent',
+                    'user',
+                    'zone',
+                    'transactionType',
+                    'trip',
+                    'transactionDetails.product.measureType',
                     'transactionPayments.paymentMethod'
                 ]);
-
-                Log::info('Transaction updated successfully', [
-                    'transaction_id' => $id,
-                    'final_total' => $updatedTransaction->total,
-                    'final_amount_paid' => $updatedTransaction->amount_paid,
-                    'payment_status' => $updatedTransaction->payment_status,
-                    'details_count' => $updatedTransaction->transactionDetails->count(),
-                    'payments_count' => $updatedTransaction->transactionPayments->count()
-                ]);
-
-                return $updatedTransaction;
-                
-            } catch (\InvalidArgumentException $e) {
-                Log::error('Validation error updating transaction', [
-                    'transaction_id' => $id,
-                    'error' => $e->getMessage(),
-                    'data' => $data
-                ]);
-                throw $e;
-                
             } catch (\Exception $e) {
-                Log::error('Error updating transaction', [
-                    'transaction_id' => $id,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
-                    'data' => $data
-                ]);
                 throw new \Exception("Error al actualizar la transacción: " . $e->getMessage());
             }
         });
@@ -731,7 +555,7 @@ class TransactionRepository
     public function addPayment(int $id, array $paymentData): Transaction
     {
         $transaction = $this->findActiveWithDetails($id);
-        
+
         if (!$transaction) {
             throw new \Exception('Transaction not found');
         }
@@ -753,10 +577,10 @@ class TransactionRepository
 
             // ✅ CALCULAR TOTAL PAGADO DESPUÉS DE CREAR EL PAGO
             $totalPaid = $transaction->transactionPayments()->sum('amount_paid');
-            
+
             // ✅ ACTUALIZAR EL amount_paid CON EL TOTAL CALCULADO
             $transaction->update(['amount_paid' => $totalPaid]);
-            
+
             // ✅ EL PAYMENT STATUS SE ACTUALIZA AUTOMÁTICAMENTE EN EL BOOT DEL MODELO
             Log::info('Payment added successfully', [
                 'transaction_id' => $transaction->id,
@@ -768,8 +592,12 @@ class TransactionRepository
         });
 
         return $transaction->fresh()->load([
-            'agent', 'user', 'zone', 'transactionType', 'trip',
-            'transactionDetails.product.measureType', 
+            'agent',
+            'user',
+            'zone',
+            'transactionType',
+            'trip',
+            'transactionDetails.product.measureType',
             'transactionPayments.paymentMethod'
         ]);
     }
@@ -811,13 +639,13 @@ class TransactionRepository
             $product = Product::find($productId);
             return $product ? (float) $product->price : 0;
         }
-        
+
         // 1. Buscar precio específico para la zona
         $zonePriceDetail = \App\Models\ProductPriceDetail::active()
             ->where('product_id', $productId)
             ->where('zone_id', $zoneId)
             ->first();
-        
+
         if ($zonePriceDetail) {
             Log::info("Using zone-specific price", [
                 'product_id' => $productId,
@@ -826,18 +654,18 @@ class TransactionRepository
             ]);
             return (float) $zonePriceDetail->price;
         }
-        
+
         // 2. Si no hay precio para la zona, usar precio base del producto
         $product = Product::find($productId);
         $basePrice = $product ? (float) $product->price : 0;
-        
+
         Log::info("Using base product price", [
             'product_id' => $productId,
             'zone_id' => $zoneId,
             'base_price' => $basePrice,
             'reason' => 'No zone-specific price found'
         ]);
-        
+
         return $basePrice;
     }
 
@@ -847,17 +675,17 @@ class TransactionRepository
         if (!$zoneId) {
             return "precio base";
         }
-        
+
         $zonePriceDetail = \App\Models\ProductPriceDetail::active()
             ->where('product_id', $productId)
             ->where('zone_id', $zoneId)
             ->first();
-        
+
         if ($zonePriceDetail) {
             $zone = \App\Models\Zone::find($zoneId);
             return "precio para zona {$zone?->name}";
         }
-        
+
         return "precio base";
     }
 }

@@ -74,6 +74,15 @@ class TransactionService
     {
         $user = Auth::user();
         
+        // ✅ LOGGING INICIAL MÁS DETALLADO
+        $this->logInfo('=== INICIANDO CREACIÓN DE TRANSACCIÓN ===', [
+            'user_id' => $user->id,
+            'user_role' => $user->getRoleName(),
+            'raw_data' => $data,
+            'details_count' => count($data['details'] ?? []),
+            'payments_count' => count($data['payments'] ?? [])
+        ]);
+        
         // ✅ ASIGNAR USUARIO SEGÚN ROL
         if ($user->hasRole('Vendedor')) {
             $data['user_id'] = $user->id;
@@ -81,20 +90,26 @@ class TransactionService
             // ✅ VALIDACIÓN ADICIONAL: Verificar zona del vendedor
             $zoneId = $data['zone_id'] ?? null;
             if ($zoneId && !$user->hasZone($zoneId)) {
+                $this->logError('Vendedor sin permisos en zona', [
+                    'user_id' => $user->id,
+                    'zone_id' => $zoneId
+                ]);
                 return ResponseHelper::forbidden('No tienes permisos para operar en esta zona.');
             }
         } elseif (empty($data['user_id'])) {
             $data['user_id'] = $user->id;
         }
 
-        $this->logInfo('Creando nueva transacción', [
-            'data' => $data,
-            'creator_id' => $user->id,
-            'creator_role' => $user->getRoleName(),
-            'zone_access_validated' => $user->hasRole('Vendedor') ? $user->hasZone($data['zone_id'] ?? null) : 'N/A'
+        $this->logInfo('Datos preparados para creación', [
+            'final_user_id' => $data['user_id'],
+            'zone_validated' => $user->hasRole('Vendedor') ? $user->hasZone($data['zone_id'] ?? null) : 'N/A',
+            'transaction_type_id' => $data['transaction_type_id'] ?? null
         ]);
 
         try {
+            // ✅ VALIDAR DATOS ANTES DE CREAR
+            $this->validateTransactionDataForCreation($data);
+            
             $transaction = $this->transactionRepository->createWithDetailsAndPayments($data);
             
             // ✅ VERIFICAR SI SE CREÓ EL EGRESO PARA COMPRAS
@@ -106,7 +121,7 @@ class TransactionService
             
             $transactionDTO = TransactionMapper::modelToDTO($transaction);
 
-            $this->logInfo('Transacción creada exitosamente', [
+            $this->logInfo('=== TRANSACCIÓN CREADA EXITOSAMENTE ===', [
                 'transaction_id' => $transaction->id,
                 'transaction_code' => $transaction->code,
                 'creator_id' => $user->id,
@@ -115,13 +130,15 @@ class TransactionService
                 'details_count' => $transaction->transactionDetails->count(),
                 'payments_count' => $transaction->transactionPayments->count(),
                 'type' => $transaction->transactionType?->name,
-                'egress_created' => $egressCreated
+                'egress_created' => $egressCreated,
+                'delivery_status' => $transaction->delivery_status,
+                'payment_status' => $transaction->payment_status
             ]);
 
             return ResponseHelper::created($transactionDTO, 'Transacción creada exitosamente');
             
         } catch (\InvalidArgumentException $e) {
-            $this->logError('Error de validación al crear transacción', [
+            $this->logError('=== ERROR DE VALIDACIÓN ===', [
                 'error' => $e->getMessage(),
                 'user_id' => $user->id,
                 'data' => $data
@@ -129,14 +146,58 @@ class TransactionService
             return ResponseHelper::badRequest($e->getMessage());
             
         } catch (\Exception $e) {
-            $this->logError('Error interno al crear transacción', [
+            $this->logError('=== ERROR INTERNO ===', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
                 'user_id' => $user->id,
-                'data' => $data
+                'data' => $data,
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
             ]);
             return ResponseHelper::internalServerError('Error interno al crear la transacción: ' . $e->getMessage());
         }
+    }
+
+    // ✅ NUEVO MÉTODO: VALIDAR DATOS ANTES DE CREAR
+    private function validateTransactionDataForCreation(array $data): void
+    {
+        // Validar que existan detalles
+        if (empty($data['details'])) {
+            throw new \InvalidArgumentException('La transacción debe tener al menos un detalle de producto');
+        }
+        
+        // Validar que exista tipo de transacción
+        if (empty($data['transaction_type_id'])) {
+            throw new \InvalidArgumentException('Debe especificar el tipo de transacción');
+        }
+        
+        // Validar que los productos existan
+        foreach ($data['details'] as $index => $detail) {
+            $productId = $detail['product_id'] ?? null;
+            if (!$productId) {
+                throw new \InvalidArgumentException("Detalle {$index}: product_id es requerido");
+            }
+            
+            $product = \App\Models\Product::active()->find($productId);
+            if (!$product) {
+                throw new \InvalidArgumentException("Detalle {$index}: El producto ID {$productId} no existe o está inactivo");
+            }
+            
+            $quantity = $detail['quantity'] ?? 0;
+            if ($quantity <= 0) {
+                throw new \InvalidArgumentException("Detalle {$index}: La cantidad debe ser mayor a 0");
+            }
+            
+            $price = $detail['price'] ?? 0;
+            if ($price <= 0) {
+                throw new \InvalidArgumentException("Detalle {$index}: El precio debe ser mayor a 0");
+            }
+        }
+        
+        $this->logInfo('Validación de datos completada exitosamente', [
+            'details_validated' => count($data['details']),
+            'payments_count' => count($data['payments'] ?? [])
+        ]);
     }
 
     public function updateTransaction(int $id, array $data): array
@@ -219,27 +280,106 @@ class TransactionService
         return $this->updateTransactionStatus($id, 'markAsReturned', 'Transacción marcada como devuelta');
     }
 
+    // ✅ MÉTODO ACTUALIZADO: CANCELACIÓN UNIFICADA
     public function cancelTransaction(int $id): array
     {
-        return DB::transaction(function () use ($id) {
-            $transaction = $this->transactionRepository->findActiveWithDetails($id);
-            
-            if (!$transaction) {
-                return ResponseHelper::notFound('Transacción no encontrada');
+        $user = Auth::user();
+        
+        return DB::transaction(function () use ($id, $user) {
+            try {
+                $transaction = $this->transactionRepository->findActiveWithDetails($id);
+                
+                if (!$transaction) {
+                    return ResponseHelper::notFound('Transacción no encontrada');
+                }
+
+                // ✅ VALIDAR PERMISOS
+                if ($user->hasRole('Vendedor') && $transaction->user_id !== $user->id) {
+                    return ResponseHelper::forbidden('No tienes acceso a esta transacción');
+                }
+
+                // ✅ OBTENER INFORMACIÓN ANTES DE CANCELAR
+                $transactionInfo = [
+                    'id' => $transaction->id,
+                    'code' => $transaction->code,
+                    'type' => $transaction->transactionType?->name,
+                    'type_code' => $transaction->transactionType?->code,
+                    'delivery_status' => $transaction->delivery_status,
+                    'payment_status' => $transaction->payment_status,
+                    'is_return' => $transaction->isReturn(),
+                    'is_original' => $transaction->isOriginalTransaction(),
+                    'has_active_returns' => $transaction->hasActiveReturns(),
+                    'active_returns_count' => $transaction->getActiveReturns()->count()
+                ];
+
+                $this->logInfo('Starting unified transaction cancellation', [
+                    'transaction_info' => $transactionInfo,
+                    'user_id' => $user->id
+                ]);
+
+                // ✅ CANCELAR LA TRANSACCIÓN (CON CASCADA AUTOMÁTICA)
+                $transaction->cancelTransaction();
+
+                // ✅ RECARGAR TRANSACCIÓN
+                $cancelledTransaction = $transaction->fresh();
+                $transactionDTO = TransactionMapper::modelToDTO($cancelledTransaction);
+
+                // ✅ MENSAJE SEGÚN TIPO Y EFECTOS
+                $message = $this->getUnifiedCancellationMessage($transactionInfo);
+
+                return ResponseHelper::success($transactionDTO, $message);
+                
+            } catch (\InvalidArgumentException $e) {
+                return ResponseHelper::badRequest($e->getMessage());
+                
+            } catch (\Exception $e) {
+                $this->logError('Error in unified cancellation', [
+                    'transaction_id' => $id,
+                    'error' => $e->getMessage()
+                ]);
+                return ResponseHelper::internalServerError('Error interno al cancelar: ' . $e->getMessage());
             }
-
-            // ✅ ELIMINAR EGRESO SI ES COMPRA
-            if ($this->isPurchaseTransaction($transaction)) {
-                $this->deletePurchaseEgress($transaction);
-            }
-
-            $transaction->cancelTransaction();
-            $transactionDTO = TransactionMapper::modelToDTO($transaction->fresh());
-
-            $this->logInfo('Transaction cancelled', ['transaction_id' => $id]);
-
-            return ResponseHelper::success($transactionDTO, 'Transacción anulada exitosamente');
         });
+    }
+
+    // ✅ NUEVO MÉTODO: MENSAJE UNIFICADO DE CANCELACIÓN
+    private function getUnifiedCancellationMessage(array $transactionInfo): string
+    {
+        if ($transactionInfo['is_return']) {
+            $baseMessage = "Devolución {$transactionInfo['code']} anulada exitosamente.";
+            $baseMessage .= " Los cambios de stock y reembolsos han sido revertidos.";
+            return $baseMessage;
+        } else {
+            // Transacción original
+            $baseMessage = "Transacción {$transactionInfo['code']} cancelada exitosamente.";
+            
+            // Mencionar devoluciones canceladas en cascada
+            if ($transactionInfo['has_active_returns']) {
+                $count = $transactionInfo['active_returns_count'];
+                $baseMessage .= " Se cancelaron {$count} devolución(es) relacionada(s) automáticamente.";
+            }
+            
+            // Mencionar efectos en stock
+            switch ($transactionInfo['type_code']) {
+                case 'SALE':
+                    if ($transactionInfo['delivery_status'] === 'DELIVERED') {
+                        $baseMessage .= " El stock ha sido restaurado.";
+                    } else {
+                        $baseMessage .= " El stock reservado ha sido liberado.";
+                    }
+                    break;
+                    
+                case 'PURCHASE':
+                    if ($transactionInfo['delivery_status'] === 'DELIVERED') {
+                        $baseMessage .= " El stock ha sido ajustado y el egreso eliminado.";
+                    } else {
+                        $baseMessage .= " El egreso programado ha sido eliminado.";
+                    }
+                    break;
+            }
+            
+            return $baseMessage;
+        }
     }
 
     public function addPayment(int $id, array $paymentData): array
@@ -346,11 +486,21 @@ class TransactionService
     public function getReturns(array $filters = []): array
     {
         $filters['transaction_type'] = ['RETURN_SALE', 'RETURN_PURCHASE'];
-        $filters['include_returns'] = true; // Incluir devoluciones
+        $filters['include_returns'] = true;
+        
+        // ✅ EXCLUIR DEVOLUCIONES CANCELADAS
+        if (!isset($filters['delivery_status'])) {
+            $filters['delivery_status'] = ['PENDING', 'DELIVERED', 'RETURNED'];
+        }
+        
+        if (!isset($filters['payment_status'])) {
+            $filters['payment_status'] = ['PENDING', 'PARTIAL', 'PAID'];
+        }
+        
         return $this->getAllTransactions($filters);
     }
 
-    // ✅ MÉTODO PARA OBTENER DEVOLUCIONES DE UNA TRANSACCIÓN ESPECÍFICA
+    // ✅ MÉTODO ACTUALIZADO PARA OBTENER DEVOLUCIONES DE UNA TRANSACCIÓN ESPECÍFICA
     public function getTransactionReturns(int $id): array
     {
         $transaction = $this->transactionRepository->findActiveWithDetails($id);
@@ -359,16 +509,35 @@ class TransactionService
             return ResponseHelper::notFound('Transacción no encontrada');
         }
 
-        // ✅ USAR EL MAPEO ANIDADO DESDE EL MAPPER
+        // ✅ USAR EL MAPEO ANIDADO DESDE EL MAPPER (YA EXCLUYE CANCELADAS)
         $transactionDTO = TransactionMapper::modelToDTO($transaction);
+        
+        // ✅ OBTENER ESTADÍSTICAS SOLO DE DEVOLUCIONES ACTIVAS
+        $activeReturns = $transaction->returns()
+            ->whereNot('delivery_status', 'CANCELLED')
+            ->whereNot('payment_status', 'CANCELLED')
+            ->get();
+        
+        $cancelledReturns = $transaction->returns()
+            ->where(function ($q) {
+                $q->where('delivery_status', 'CANCELLED')
+                  ->orWhere('payment_status', 'CANCELLED');
+            })
+            ->get();
         
         return ResponseHelper::success([
             'transaction_id' => $id,
             'transaction_code' => $transaction->code,
-            'returns' => $transactionDTO->toArray()['returns'], // Solo las devoluciones
+            'returns' => $transactionDTO->toArray()['returns'], // Solo las activas
             'returns_count' => count($transactionDTO->toArray()['returns']),
-            'total_returned_amount' => $transaction->getTotalReturnedAmount(),
-            'remaining_returnable_amount' => $transaction->getRemainingReturnableAmount()
+            'cancelled_returns_count' => $cancelledReturns->count(),
+            'total_returned_amount' => $transaction->getTotalReturnedAmount(), // Ya excluye canceladas
+            'remaining_returnable_amount' => $transaction->getRemainingReturnableAmount(),
+            'statistics' => [
+                'active_returns' => $activeReturns->count(),
+                'cancelled_returns' => $cancelledReturns->count(),
+                'total_returns_ever_created' => $transaction->returns()->count()
+            ]
         ], 'Devoluciones obtenidas exitosamente');
     }
 
@@ -376,164 +545,211 @@ class TransactionService
     {
         $user = Auth::user();
         
-        // Validar que existe la transacción original
-        $originalTransaction = $this->transactionRepository->findActiveWithDetails($data['relation_to']);
-        
-        if (!$originalTransaction) {
-            return ResponseHelper::notFound('Transacción original no encontrada');
-        }
-
-        if (!$originalTransaction->canBeReturned()) {
-            return ResponseHelper::badRequest('La transacción original no puede ser devuelta');
-        }
-
-        // ✅ CALCULAR MONTOS ANTES DE LA DEVOLUCIÓN
-        $returnAmount = collect($data['details'])->sum(fn($detail) => $detail['price'] * $detail['quantity']);
-        $debtInfoBefore = $originalTransaction->calculateDebtInfo();
-        
-        $this->logInfo('Procesando devolución - datos iniciales', [
-            'original_transaction_id' => $originalTransaction->id,
-            'return_amount' => $returnAmount,
-            'debt_info_before' => $debtInfoBefore
-        ]);
-
-        // ✅ LÓGICA DE REEMBOLSO CORREGIDA
-        $refundAmount = 0;
-        $currentDebt = $debtInfoBefore['current_debt'];
-        
-        if ($currentDebt > 0.01) {
-            // ✅ CASO: CLIENTE TIENE DEUDA
-            if ($returnAmount > $currentDebt) {
-                // La devolución cubre la deuda y sobra para reembolso
-                $refundAmount = $returnAmount - $currentDebt;
-            } else {
-                // La devolución no cubre toda la deuda, no hay reembolso
-                $refundAmount = 0;
-            }
-            
-            $this->logInfo('Cliente con deuda', [
-                'current_debt' => $currentDebt,
-                'return_amount' => $returnAmount,
-                'refund_amount' => $refundAmount,
-                'logic' => $returnAmount > $currentDebt ? 'partial_refund_after_debt_coverage' : 'no_refund'
-            ]);
-        } else {
-            // ✅ CASO: CLIENTE SIN DEUDA (YA PAGÓ TODO O MÁS)
-            // Toda la devolución es reembolsable
-            $refundAmount = $returnAmount;
-            
-            $this->logInfo('Cliente sin deuda - reembolso completo', [
-                'current_debt' => $currentDebt,
-                'return_amount' => $returnAmount,
-                'refund_amount' => $refundAmount,
-                'logic' => 'full_refund'
-            ]);
-        }
-
-        // Asignar datos de la transacción original
-        $data['user_id'] = $originalTransaction->user_id;
-        $data['agent_id'] = $originalTransaction->agent_id;
-        $data['zone_id'] = $originalTransaction->zone_id;
-        $data['trip_id'] = $originalTransaction->trip_id;
-
-        // Determinar el tipo de devolución
-        $transactionTypeCode = $originalTransaction->isSale() ? 'RETURN_SALE' : 'RETURN_PURCHASE';
-        $returnType = \App\Models\TransactionType::where('code', $transactionTypeCode)->first();
-        
-        if (!$returnType) {
-            return ResponseHelper::badRequest("Tipo de transacción '{$transactionTypeCode}' no encontrado");
-        }
-        
-        $data['transaction_type_id'] = $returnType->id;
-
-        // ✅ CONFIGURAR MONTOS DE LA DEVOLUCIÓN CORRECTAMENTE
-        $data['total'] = -$returnAmount; // ✅ NEGATIVO para devoluciones
-        $data['amount_paid'] = 0; // ✅ SIEMPRE 0 PARA DEVOLUCIONES - NO NEGATIVO
-        
-        // ✅ STATUS PARA DEVOLUCIONES
-        $data['delivery_status'] = 'RETURNED';
-        $data['payment_status'] = 'PAID'; // Siempre PAID para devoluciones
-
-        // ✅ CREAR PAGOS SOLO SI HAY REEMBOLSO REAL - CON MONTO POSITIVO
-        if ($refundAmount > 0.01) {
-            // ✅ VALIDAR QUE SE PROPORCIONÓ UN MÉTODO DE PAGO PARA EL REEMBOLSO
-            if (empty($data['payments']) || empty($data['payments'][0]['payment_method_id'])) {
-                return ResponseHelper::badRequest('Debe especificar un método de pago para el reembolso');
-            }
-            
-            $data['payments'] = [
-                [
-                    'payment_method_id' => $data['payments'][0]['payment_method_id'],
-                    'amount_paid' => $refundAmount, // ✅ POSITIVO = reembolso (dinero que entregamos)
-                    'description' => "Reembolso por devolución - Transacción #{$originalTransaction->code}"
-                ]
-            ];
-            
-            $this->logInfo('Reembolso configurado correctamente', [
-                'refund_amount' => $refundAmount,
-                'payment_method_id' => $data['payments'][0]['payment_method_id'],
-                'amount_paid_in_transaction' => $data['amount_paid'], // Siempre 0
-                'amount_paid_in_payment' => $refundAmount // Positivo
-            ]);
-        } else {
-            // Sin reembolso
-            $data['payments'] = [];
-            
-            $this->logInfo('Sin reembolso configurado', [
-                'refund_amount' => $refundAmount,
-                'amount_paid_in_transaction' => $data['amount_paid'] // Siempre 0
-            ]);
-        }
-
         try {
-            $returnTransaction = $this->transactionRepository->createWithDetailsAndPayments($data);
+            $this->logInfo('=== INICIO CREACIÓN DE DEVOLUCIÓN ===', [
+                'data_received' => $data,
+                'user_id' => $user->id
+            ]);
             
-            // ✅ ACTUALIZAR PAYMENT_STATUS DE LA TRANSACCIÓN ORIGINAL
+            // Validar que existe la transacción original
+            $originalTransaction = $this->transactionRepository->findActiveWithDetails($data['relation_to']);
+            
+            if (!$originalTransaction) {
+                $this->logError('Transacción original no encontrada', [
+                    'relation_to' => $data['relation_to']
+                ]);
+                return ResponseHelper::notFound('Transacción original no encontrada');
+            }
+
+            if (!$originalTransaction->canBeReturned()) {
+                return ResponseHelper::badRequest('La transacción original no puede ser devuelta');
+            }
+
+            // ✅ CALCULAR MONTOS Y REEMBOLSO CORRECTAMENTE
+            $returnAmount = collect($data['details'])->sum(fn($detail) => $detail['price'] * $detail['quantity']);
+            $debtInfoBefore = $originalTransaction->calculateDebtInfo();
+            $currentDebtBefore = $debtInfoBefore['current_debt'];
+            
+            $this->logInfo('Cálculos de devolución - ANTES', [
+                'return_amount' => $returnAmount,
+                'current_debt_before' => $currentDebtBefore,
+                'original_total' => $originalTransaction->total,
+                'original_amount_paid' => $originalTransaction->amount_paid,
+                'debt_info_before' => $debtInfoBefore
+            ]);
+
+            // ✅ LÓGICA DE REEMBOLSO CORREGIDA
+            $refundAmount = 0;
+            $debtCompensation = 0; // ✅ NUEVA VARIABLE PARA TRACKING REAL
+            
+            if ($currentDebtBefore > 0.01) {
+                // ✅ HAY DEUDA: El monto devuelto compensa deuda primero
+                $debtCompensation = min($returnAmount, $currentDebtBefore); // ✅ REAL COMPENSATION
+                
+                if ($returnAmount > $currentDebtBefore) {
+                    // ✅ EL MONTO DEVUELTO ES MAYOR QUE LA DEUDA
+                    $refundAmount = $returnAmount - $currentDebtBefore; // Lo que sobra se reembolsa
+                    $this->logInfo('Devolución mayor que deuda', [
+                        'debt_compensation' => $debtCompensation,
+                        'refund_amount' => $refundAmount
+                    ]);
+                } else {
+                    // ✅ EL MONTO DEVUELTO ES MENOR O IGUAL QUE LA DEUDA
+                    $refundAmount = 0; // Todo compensa deuda, no hay reembolso
+                    $this->logInfo('Devolución compensa deuda parcial/total', [
+                        'debt_compensation' => $debtCompensation,
+                        'refund_amount' => 0
+                    ]);
+                }
+            } else {
+                // ✅ NO HAY DEUDA: Todo se reembolsa
+                $refundAmount = $returnAmount;
+                $debtCompensation = 0; // ✅ NO HAY DEUDA QUE COMPENSAR
+                $this->logInfo('Sin deuda, reembolso total', [
+                    'refund_amount' => $refundAmount,
+                    'debt_compensation' => $debtCompensation
+                ]);
+            }
+
+            // ✅ VALIDAR MÉTODO DE PAGO PARA REEMBOLSO
+            if ($refundAmount > 0.01) {
+                if (empty($data['payments']) || empty($data['payments'][0]['payment_method_id'])) {
+                    return ResponseHelper::badRequest('Debe especificar un método de pago para el reembolso de S/ ' . number_format($refundAmount, 2));
+                }
+            }
+
+            // ✅ OBTENER TIPO DE DEVOLUCIÓN
+            $transactionTypeCode = $originalTransaction->isSale() ? 'RETURN_SALE' : 'RETURN_PURCHASE';
+            $returnType = \App\Models\TransactionType::where('code', $transactionTypeCode)->first();
+            
+            if (!$returnType) {
+                return ResponseHelper::badRequest("Tipo de transacción '{$transactionTypeCode}' no encontrado");
+            }
+
+            // ✅ PREPARAR DATOS DE LA DEVOLUCIÓN
+            $returnData = [
+                'user_id' => $originalTransaction->user_id,
+                'agent_id' => $originalTransaction->agent_id,
+                'zone_id' => $originalTransaction->zone_id,
+                'trip_id' => $originalTransaction->trip_id,
+                'transaction_type_id' => $returnType->id,
+                'relation_to' => $data['relation_to'],
+                'date' => $data['date'],
+                'description' => $data['description'] ?? "Devolución de {$originalTransaction->code}",
+                'total' => -$returnAmount, // ✅ NEGATIVO para devoluciones
+                'amount_paid' => 0, // ✅ SIEMPRE 0 PARA DEVOLUCIONES
+                'delivery_status' => 'RETURNED', // ✅ YA PROCESADA
+                'payment_status' => 'PAID', // ✅ YA PAGADA (REEMBOLSADA)
+                'details' => $data['details'],
+                'payments' => []
+            ];
+
+            // ✅ AGREGAR PAGO DE REEMBOLSO SI ES NECESARIO
+            if ($refundAmount > 0.01) {
+                $returnData['payments'] = [
+                    [
+                        'payment_method_id' => $data['payments'][0]['payment_method_id'],
+                        'amount_paid' => $refundAmount,
+                        'description' => "Reembolso por devolución - {$originalTransaction->code}"
+                    ]
+                ];
+                
+                $this->logInfo('Pago de reembolso agregado', [
+                    'refund_amount' => $refundAmount,
+                    'payment_method_id' => $data['payments'][0]['payment_method_id']
+                ]);
+            }
+
+            $this->logInfo('Creando devolución con datos finales', [
+                'return_data_summary' => [
+                    'total' => $returnData['total'],
+                    'amount_paid' => $returnData['amount_paid'],
+                    'refund_amount' => $refundAmount,
+                    'debt_compensation' => $debtCompensation, // ✅ AGREGAR AL LOG
+                    'payments_count' => count($returnData['payments'])
+                ]
+            ]);
+
+            // ✅ CREAR LA DEVOLUCIÓN
+            $returnTransaction = $this->transactionRepository->createWithDetailsAndPayments($returnData);
+
+            // ✅ VERIFICAR REEMBOLSO CREADO
+            $actualRefundCreated = $returnTransaction->transactionPayments->sum('amount_paid');
+            
+            $this->logInfo('Devolución creada, verificando reembolso', [
+                'return_transaction_id' => $returnTransaction->id,
+                'return_transaction_code' => $returnTransaction->code,
+                'expected_refund' => $refundAmount,
+                'actual_refund_created' => $actualRefundCreated,
+                'payments_created' => $returnTransaction->transactionPayments->count()
+            ]);
+
+            // ✅ ACTUALIZAR TRANSACCIÓN ORIGINAL Y OBTENER NUEVA DEUDA
             $originalTransaction->updatePaymentStatusAutomatically();
             $originalTransaction->save();
             
-            // ✅ OBTENER NUEVA INFORMACIÓN DE DEUDA
-            $newDebtInfo = $originalTransaction->fresh()->calculateDebtInfo();
+            // ✅ VERIFICAR NUEVA DEUDA DE LA TRANSACCIÓN ORIGINAL
+            $debtInfoAfter = $originalTransaction->fresh()->calculateDebtInfo();
+            $currentDebtAfter = $debtInfoAfter['current_debt'];
             
-            $this->logInfo('Devolución creada exitosamente con amount_paid corregido', [
-                'return_transaction_id' => $returnTransaction->id,
-                'return_transaction_code' => $returnTransaction->code,
-                'return_amount_paid' => $returnTransaction->amount_paid, // Debe ser 0
-                'return_total' => $returnTransaction->total, // Debe ser negativo
-                'refund_amount' => $refundAmount,
-                'transaction_payments_count' => $returnTransaction->transactionPayments->count(),
-                'transaction_payments_sum' => $returnTransaction->transactionPayments->sum('amount_paid'),
-                'debt_info_after' => $newDebtInfo
+            // ✅ CALCULAR REDUCCIÓN REAL DE DEUDA
+            $actualDebtReduction = max(0, $currentDebtBefore - $currentDebtAfter);
+            
+            $this->logInfo('Transacción original actualizada', [
+                'original_payment_status' => $originalTransaction->payment_status,
+                'debt_before' => $currentDebtBefore,
+                'debt_after' => $currentDebtAfter,
+                'actual_debt_reduction' => $actualDebtReduction,
+                'debt_info_after' => $debtInfoAfter
             ]);
 
+            // ✅ MAPEAR A DTO
             $returnDTO = TransactionMapper::modelToDTO($returnTransaction);
+
+            // ✅ GENERAR MENSAJE INFORMATIVO CORREGIDO
+            $message = "Devolución procesada exitosamente.";
             
-            // ✅ MENSAJE DETALLADO SEGÚN EL RESULTADO
-            if ($refundAmount > 0.01) {
-                $message = "Devolución procesada. Reembolso: S/ " . number_format($refundAmount, 2);
-                if ($newDebtInfo['current_debt'] > 0.01) {
-                    $message .= ". Nueva deuda: S/ " . number_format($newDebtInfo['current_debt'], 2);
-                } else {
-                    $message .= ". Sin deuda pendiente.";
-                }
+            if ($actualRefundCreated > 0.01) {
+                $message .= " Reembolso: S/ " . number_format($actualRefundCreated, 2) . ".";
             } else {
-                $newDebt = $newDebtInfo['current_debt'];
-                if ($newDebt > 0.01) {
-                    $message = "Devolución procesada. No hay reembolso. Nueva deuda: S/ " . number_format($newDebt, 2);
-                } else {
-                    $message = "Devolución procesada. No hay reembolso. Sin deuda pendiente.";
-                }
+                $message .= " No hay reembolso.";
             }
             
+            // ✅ USAR LA REDUCCIÓN REAL DE DEUDA CALCULADA
+            if ($actualDebtReduction > 0.01) {
+                $message .= " Deuda reducida en: S/ " . number_format($actualDebtReduction, 2) . ".";
+            }
+            
+            // ✅ AGREGAR INFO ADICIONAL SI QUEDA DEUDA
+            if ($currentDebtAfter > 0.01) {
+                $message .= " Deuda restante: S/ " . number_format($currentDebtAfter, 2) . ".";
+            }
+
+            $this->logInfo('=== DEVOLUCIÓN COMPLETADA ===', [
+                'return_transaction_id' => $returnTransaction->id,
+                'original_debt_before' => $currentDebtBefore,
+                'original_debt_after' => $currentDebtAfter,
+                'actual_debt_reduction' => $actualDebtReduction,
+                'refund_created' => $actualRefundCreated,
+                'message' => $message
+            ]);
+
             return ResponseHelper::created($returnDTO, $message);
             
-        } catch (\Exception $e) {
-            $this->logError('Error creando devolución', [
+        } catch (\InvalidArgumentException $e) {
+            $this->logError('=== ERROR DE VALIDACIÓN EN DEVOLUCIÓN ===', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
                 'data' => $data
             ]);
-            return ResponseHelper::internalServerError('Error interno al procesar la devolución');
+            return ResponseHelper::badRequest($e->getMessage());
+            
+        } catch (\Exception $e) {
+            $this->logError('=== ERROR INTERNO EN DEVOLUCIÓN ===', [
+                'error' => $e->getMessage(),
+                'data' => $data,
+                'trace' => $e->getTraceAsString()
+            ]);
+            return ResponseHelper::internalServerError('Error interno al procesar la devolución: ' . $e->getMessage());
         }
     }
 

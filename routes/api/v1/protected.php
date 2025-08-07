@@ -244,11 +244,14 @@ Route::prefix('transactions')->name('transactions.')->group(function () {
         Route::patch('{id}/return', [TransactionController::class, 'markAsReturned'])->name('return');
         Route::patch('{id}/cancel', [TransactionController::class, 'cancelTransaction'])->name('cancel');
         Route::post('{id}/add-payment', [TransactionController::class, 'addPayment'])->name('add-payment');
+        
+        // ✅ NUEVA RUTA: Verificar si se puede cancelar
+        Route::get('{id}/can-cancel', [TransactionController::class, 'canCancel'])->name('can-cancel');
     });
     
-    // ✅ RUTAS PARA DEVOLUCIONES
+    // ✅ RUTAS PARA DEVOLUCIONES ACTIVAS
     Route::post('returns', [TransactionController::class, 'createReturn'])->name('create-return');
-    Route::get('returns', [TransactionController::class, 'returns'])->name('returns');
+    Route::get('returns', [TransactionController::class, 'returns'])->name('returns'); // Solo activas
     Route::get('{id}/returns', [TransactionController::class, 'getTransactionReturns'])
         ->name('transaction-returns')
         ->middleware('validate.numeric.id');

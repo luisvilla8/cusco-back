@@ -95,7 +95,16 @@ class StoreTransactionRequest extends FormRequest
             $transactionType = null;
             
             if ($transactionTypeId) {
-                $transactionType = \App\Models\TransactionType::find($transactionTypeId);
+                try {
+                    $transactionType = \App\Models\TransactionType::find($transactionTypeId);
+                } catch (\Exception $e) {
+                    \Log::error("Error finding transaction type", [
+                        'transaction_type_id' => $transactionTypeId,
+                        'error' => $e->getMessage()
+                    ]);
+                    $validator->errors()->add('transaction_type_id', 'Error al validar el tipo de transacción');
+                    return;
+                }
             }
             
             $isReturn = $transactionType && in_array(
@@ -112,10 +121,20 @@ class StoreTransactionRequest extends FormRequest
                     return;
                 }
                 
-                if (!$user->hasZone($zoneId)) {
-                    $zone = \App\Models\Zone::find($zoneId);
-                    $zoneName = $zone ? $zone->name : "ID {$zoneId}";
-                    $validator->errors()->add('zone_id', "No tienes permisos para operar en la zona: {$zoneName}");
+                try {
+                    if (!$user->hasZone($zoneId)) {
+                        $zone = \App\Models\Zone::find($zoneId);
+                        $zoneName = $zone ? $zone->name : "ID {$zoneId}";
+                        $validator->errors()->add('zone_id', "No tienes permisos para operar en la zona: {$zoneName}");
+                        return;
+                    }
+                } catch (\Exception $e) {
+                    \Log::error("Error validating user zone", [
+                        'user_id' => $user->id,
+                        'zone_id' => $zoneId,
+                        'error' => $e->getMessage()
+                    ]);
+                    $validator->errors()->add('zone_id', 'Error al validar permisos de zona');
                     return;
                 }
             }
@@ -165,7 +184,8 @@ class StoreTransactionRequest extends FormRequest
                     \Log::error("Error validating agent type", [
                         'agent_id' => $agentId,
                         'transaction_type_id' => $transactionTypeId,
-                        'error' => $e->getMessage()
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString()
                     ]);
                     
                     $validator->errors()->add('agent_id', 'Error al validar el tipo de agente.');
@@ -207,81 +227,133 @@ class StoreTransactionRequest extends FormRequest
                 }
             }
             
-            // ✅ VALIDAR PRECIOS SOLO PARA TRANSACCIONES ORIGINALES (NO DEVOLUCIONES)
-            if (!$isReturn) {
-                $details = $this->input('details', []);
+            // ✅ VALIDAR PRODUCTOS Y PRECIOS MEJORADO
+            $details = $this->input('details', []);
+            if (!empty($details)) {
                 $zoneId = $this->input('zone_id');
                 
-                if (!empty($details) && $zoneId) {
-                    foreach ($details as $index => $detail) {
-                        $productId = $detail['product_id'] ?? null;
+                foreach ($details as $index => $detail) {
+                    $productId = $detail['product_id'] ?? null;
+                    
+                    if (!$productId) {
+                        continue;
+                    }
+                    
+                    try {
+                        \Log::info("Validating product", [
+                            'product_id' => $productId,
+                            'detail_index' => $index,
+                            'is_return' => $isReturn
+                        ]);
                         
-                        if (!$productId) {
-                            continue;
-                        }
+                        $product = \App\Models\Product::active()->find($productId);
                         
-                        try {
-                            $product = \App\Models\Product::active()->find($productId);
-                            
-                            if (!$product) {
-                                $validator->errors()->add(
-                                    "details.{$index}.product_id", 
-                                    "El producto no existe o está inactivo"
-                                );
-                                continue;
-                            }
-                            
-                            // ✅ OBTENER PRECIO SEGÚN LA ZONA
-                            $currentPrice = $this->getProductPriceForZone($productId, $zoneId);
-                            $sentPrice = (float) ($detail['price'] ?? 0);
-                            
-                            // ✅ COMPARAR PRECIO ENVIADO CON PRECIO ACTUAL
-                            if (abs($sentPrice - $currentPrice) > 0.01) {
-                                $priceSource = $this->getPriceSource($productId, $zoneId);
-                                $validator->errors()->add(
-                                    "details.{$index}.price", 
-                                    "El precio del producto '{$product->name}' ha cambiado. Precio actual: S/ {$currentPrice} ({$priceSource}), precio enviado: S/ {$sentPrice}. Por favor actualiza los precios."
-                                );
-                            }
-                            
-                            // ✅ VALIDAR STOCK DISPONIBLE (SOLO PARA VENTAS)
-                            if ($transactionCode === 'SALE') {
-                                $quantity = (float) ($detail['quantity'] ?? 0);
-                                if (!$product->hasStock($quantity)) {
-                                    $validator->errors()->add(
-                                        "details.{$index}.quantity", 
-                                        "Stock insuficiente para {$product->name}. Stock disponible: {$product->stock}, cantidad solicitada: {$quantity}"
-                                    );
-                                }
-                            }
-                            
-                        } catch (\Exception $e) {
-                            \Log::error("Error validating product", [
+                        if (!$product) {
+                            \Log::warning("Product not found or inactive", [
                                 'product_id' => $productId,
-                                'error' => $e->getMessage()
+                                'detail_index' => $index
                             ]);
                             
                             $validator->errors()->add(
                                 "details.{$index}.product_id", 
-                                "Error al validar el producto"
-                            );
-                        }
-                    }
-                }
-            } else {
-                // ✅ PARA DEVOLUCIONES: VALIDAR SOLO QUE LOS PRODUCTOS EXISTAN
-                $details = $this->input('details', []);
-                foreach ($details as $index => $detail) {
-                    $productId = $detail['product_id'] ?? null;
-                    
-                    if ($productId) {
-                        $product = \App\Models\Product::active()->find($productId);
-                        if (!$product) {
-                            $validator->errors()->add(
-                                "details.{$index}.product_id", 
                                 "El producto no existe o está inactivo"
                             );
+                            continue;
                         }
+                        
+                        \Log::info("Product found successfully", [
+                            'product_id' => $productId,
+                            'product_name' => $product->name,
+                            'product_stock' => $product->stock,
+                            'product_reserved_stock' => $product->reserved_stock
+                        ]);
+                        
+                        // ✅ VALIDAR PRECIOS SOLO PARA TRANSACCIONES ORIGINALES (NO DEVOLUCIONES)
+                        if (!$isReturn && $zoneId) {
+                            try {
+                                // ✅ OBTENER PRECIO SEGÚN LA ZONA
+                                $currentPrice = $this->getProductPriceForZone($productId, $zoneId);
+                                $sentPrice = (float) ($detail['price'] ?? 0);
+                                
+                                \Log::info("Price validation", [
+                                    'product_id' => $productId,
+                                    'current_price' => $currentPrice,
+                                    'sent_price' => $sentPrice,
+                                    'zone_id' => $zoneId
+                                ]);
+                                
+                                // ✅ COMPARAR PRECIO ENVIADO CON PRECIO ACTUAL
+                                if (abs($sentPrice - $currentPrice) > 0.01) {
+                                    $priceSource = $this->getPriceSource($productId, $zoneId);
+                                    $validator->errors()->add(
+                                        "details.{$index}.price", 
+                                        "El precio del producto '{$product->name}' ha cambiado. Precio actual: S/ {$currentPrice} ({$priceSource}), precio enviado: S/ {$sentPrice}. Por favor actualiza los precios."
+                                    );
+                                }
+                            } catch (\Exception $priceError) {
+                                \Log::error("Error validating product price", [
+                                    'product_id' => $productId,
+                                    'zone_id' => $zoneId,
+                                    'error' => $priceError->getMessage()
+                                ]);
+                                
+                                $validator->errors()->add(
+                                    "details.{$index}.price", 
+                                    "Error al validar el precio del producto"
+                                );
+                            }
+                        }
+                        
+                        // ✅ VALIDAR STOCK DISPONIBLE (SOLO PARA VENTAS)
+                        if (!$isReturn && $transactionType && $transactionType->code === 'SALE') {
+                            try {
+                                $quantity = (float) ($detail['quantity'] ?? 0);
+                                $availableStock = $product->stock - $product->reserved_stock;
+                                
+                                \Log::info("Stock validation for sale", [
+                                    'product_id' => $productId,
+                                    'total_stock' => $product->stock,
+                                    'reserved_stock' => $product->reserved_stock,
+                                    'available_stock' => $availableStock,
+                                    'requested_quantity' => $quantity
+                                ]);
+                                
+                                // ✅ USAR hasSufficientStock EN LUGAR DE hasStock
+                                if (!$product->hasSufficientStock($quantity)) {
+                                    $validator->errors()->add(
+                                        "details.{$index}.quantity", 
+                                        "Stock disponible insuficiente para {$product->name}. " .
+                                        "Stock total: {$product->stock}, reservado: {$product->reserved_stock}, " .
+                                        "disponible: {$availableStock}, cantidad solicitada: {$quantity}"
+                                    );
+                                }
+                            } catch (\Exception $stockError) {
+                                \Log::error("Error validating product stock", [
+                                    'product_id' => $productId,
+                                    'error' => $stockError->getMessage()
+                                ]);
+                                
+                                $validator->errors()->add(
+                                    "details.{$index}.quantity", 
+                                    "Error al validar el stock del producto"
+                                );
+                            }
+                        }
+                        
+                    } catch (\Exception $e) {
+                        \Log::error("Error validating product - MAIN CATCH", [
+                            'product_id' => $productId,
+                            'detail_index' => $index,
+                            'error_message' => $e->getMessage(),
+                            'error_file' => $e->getFile(),
+                            'error_line' => $e->getLine(),
+                            'trace' => $e->getTraceAsString()
+                        ]);
+                        
+                        $validator->errors()->add(
+                            "details.{$index}.product_id", 
+                            "Error al validar el producto: " . $e->getMessage()
+                        );
                     }
                 }
             }
@@ -306,51 +378,74 @@ class StoreTransactionRequest extends FormRequest
         });
     }
 
-    // ✅ NUEVO MÉTODO PRIVADO: Obtener precio del producto según la zona
+    // ✅ MÉTODO PRIVADO MEJORADO CON MÁS LOGGING
     private function getProductPriceForZone(int $productId, int $zoneId): float
     {
-        // 1. Buscar precio específico para la zona
-        $zonePriceDetail = \App\Models\ProductPriceDetail::active()
-            ->where('product_id', $productId)
-            ->where('zone_id', $zoneId)
-            ->first();
-        
-        if ($zonePriceDetail) {
-            \Log::info("Using zone-specific price", [
+        try {
+            // 1. Buscar precio específico para la zona
+            $zonePriceDetail = \App\Models\ProductPriceDetail::active()
+                ->where('product_id', $productId)
+                ->where('zone_id', $zoneId)
+                ->first();
+            
+            if ($zonePriceDetail) {
+                \Log::info("Using zone-specific price", [
+                    'product_id' => $productId,
+                    'zone_id' => $zoneId,
+                    'zone_price' => $zonePriceDetail->price
+                ]);
+                return (float) $zonePriceDetail->price;
+            }
+            
+            // 2. Si no hay precio para la zona, usar precio base del producto
+            $product = \App\Models\Product::find($productId);
+            $basePrice = $product ? (float) $product->price : 0;
+            
+            \Log::info("Using base product price", [
                 'product_id' => $productId,
                 'zone_id' => $zoneId,
-                'zone_price' => $zonePriceDetail->price
+                'base_price' => $basePrice,
+                'reason' => 'No zone-specific price found'
             ]);
-            return (float) $zonePriceDetail->price;
+            
+            return $basePrice;
+            
+        } catch (\Exception $e) {
+            \Log::error("Error getting product price for zone", [
+                'product_id' => $productId,
+                'zone_id' => $zoneId,
+                'error' => $e->getMessage()
+            ]);
+            
+            // Devolver 0 en caso de error para que la validación continúe
+            return 0;
         }
-        
-        // 2. Si no hay precio para la zona, usar precio base del producto
-        $product = \App\Models\Product::find($productId);
-        $basePrice = $product ? (float) $product->price : 0;
-        
-        \Log::info("Using base product price", [
-            'product_id' => $productId,
-            'zone_id' => $zoneId,
-            'base_price' => $basePrice,
-            'reason' => 'No zone-specific price found'
-        ]);
-        
-        return $basePrice;
     }
 
-    // ✅ NUEVO MÉTODO PRIVADO: Obtener fuente del precio para mensajes
+    // ✅ MÉTODO PRIVADO MEJORADO: Obtener fuente del precio para mensajes
     private function getPriceSource(int $productId, int $zoneId): string
     {
-        $zonePriceDetail = \App\Models\ProductPriceDetail::active()
-            ->where('product_id', $productId)
-            ->where('zone_id', $zoneId)
-            ->first();
-        
-        if ($zonePriceDetail) {
-            $zone = \App\Models\Zone::find($zoneId);
-            return "precio para zona {$zone?->name}";
+        try {
+            $zonePriceDetail = \App\Models\ProductPriceDetail::active()
+                ->where('product_id', $productId)
+                ->where('zone_id', $zoneId)
+                ->first();
+            
+            if ($zonePriceDetail) {
+                $zone = \App\Models\Zone::find($zoneId);
+                return "precio para zona {$zone?->name}";
+            }
+            
+            return "precio base";
+            
+        } catch (\Exception $e) {
+            \Log::error("Error getting price source", [
+                'product_id' => $productId,
+                'zone_id' => $zoneId,
+                'error' => $e->getMessage()
+            ]);
+            
+            return "precio base";
         }
-        
-        return "precio base";
     }
 }

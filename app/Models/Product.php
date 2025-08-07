@@ -101,6 +101,7 @@ class Product extends Model
         'deleted_at' => 'datetime',
     ];
 
+    // ✅ AGREGAR VALIDACIONES EN BOOT
     protected static function boot()
     {
         parent::boot();
@@ -110,11 +111,20 @@ class Product extends Model
             if (empty($product->code)) {
                 $product->code = $product->generateCode();
             }
-            
+
             // Normalizar datos
             $product->name = ucwords(trim($product->name));
             $product->code = strtoupper(trim($product->code));
+
+            // ✅ VALIDAR QUE STOCK NO SEA NEGATIVO
+            if ($product->stock < 0) {
+                throw new \InvalidArgumentException('El stock no puede ser negativo');
+            }
             
+            if ($product->reserved_stock < 0) {
+                throw new \InvalidArgumentException('El stock reservado no puede ser negativo');
+            }
+
             ProductBusinessRules::validateStock($product->toArray());
         });
 
@@ -122,7 +132,21 @@ class Product extends Model
             // Normalizar datos en actualización
             $product->name = ucwords(trim($product->name));
             $product->code = strtoupper(trim($product->code));
+
+            // ✅ VALIDAR QUE STOCK NO SEA NEGATIVO
+            if ($product->stock < 0) {
+                throw new \InvalidArgumentException('El stock no puede ser negativo');
+            }
             
+            if ($product->reserved_stock < 0) {
+                throw new \InvalidArgumentException('El stock reservado no puede ser negativo');
+            }
+            
+            // ✅ VALIDAR QUE RESERVED_STOCK NO EXCEDA STOCK TOTAL
+            if ($product->reserved_stock > $product->stock) {
+                throw new \InvalidArgumentException('El stock reservado no puede exceder el stock total');
+            }
+
             ProductBusinessRules::validateStock($product->toArray());
         });
 
@@ -335,7 +359,8 @@ class Product extends Model
      */
     public function hasSufficientStock(float $quantity): bool
     {
-        return $this->stock >= $quantity;
+        $availableStock = $this->stock - $this->reserved_stock;
+        return $availableStock >= $quantity;
     }
 
     /**
@@ -373,22 +398,22 @@ class Product extends Model
     {
         // Prefijo basado en la categoría
         $categoryCode = $this->productCategory?->code ?? 'PROD';
-        
+
         // Obtener iniciales del nombre
         $nameParts = explode(' ', trim($this->name));
         $initials = '';
-        
+
         foreach ($nameParts as $part) {
             if (!empty($part)) {
                 $initials .= strtoupper(substr($part, 0, 1));
             }
         }
-        
+
         // Asegurar al menos 2 caracteres
         $initials = str_pad($initials, 2, 'X', STR_PAD_RIGHT);
-        
+
         $baseCode = $categoryCode . $initials;
-        
+
         // Agregar número secuencial
         $counter = 1;
         do {
@@ -413,7 +438,7 @@ class Product extends Model
         return static::active()->byCode($code)->first();
     }
 
-    // ✅ AGREGAR MÉTODO updateStock AL FINAL DE LA CLASE
+    // ✅ MÉTODO PRINCIPAL PARA ACTUALIZAR STOCK
     public function updateStock(float $quantity, string $operation = 'ADD'): void
     {
         $operation = strtoupper($operation);
@@ -422,83 +447,171 @@ class Product extends Model
             case 'ADD':
             case 'IN':
                 $this->increment('stock', $quantity);
-                Log::info("Stock increased for product", [
-                    'product_id' => $this->id,
-                    'product_code' => $this->code,
-                    'quantity_added' => $quantity,
-                    'new_stock' => $this->fresh()->stock
-                ]);
                 break;
                 
             case 'SUBTRACT':
             case 'OUT':
-                // Verificar que hay suficiente stock
                 if ($this->stock < $quantity) {
                     throw new \InvalidArgumentException("Stock insuficiente. Stock actual: {$this->stock}, cantidad solicitada: {$quantity}");
                 }
-                
                 $this->decrement('stock', $quantity);
-                Log::info("Stock decreased for product", [
-                    'product_id' => $this->id,
-                    'product_code' => $this->code,
-                    'quantity_subtracted' => $quantity,
-                    'new_stock' => $this->fresh()->stock
-                ]);
                 break;
                 
             default:
                 throw new \InvalidArgumentException("Operación de stock inválida: {$operation}. Use 'ADD' o 'SUBTRACT'");
         }
+    }
+
+    // ✅ REGLA 1: RESERVAR STOCK PARA VENTAS NUEVAS
+    public function reserveStock(float $quantity): void
+    {
+        $availableStock = $this->stock - $this->reserved_stock;
         
-        // Verificar si el stock está por debajo del mínimo
-        $this->refresh();
-        if ($this->stock <= $this->min_stock) {
-            Log::warning("Low stock alert", [
+        if ($availableStock < $quantity) {
+            throw new \InvalidArgumentException(
+                "Stock disponible insuficiente para {$this->name}. " .
+                "Stock total: {$this->stock}, reservado: {$this->reserved_stock}, " .
+                "disponible: {$availableStock}, cantidad solicitada: {$quantity}"
+            );
+        }
+        
+        // ✅ REGLA 1: reserved_stock += cantidad (stock no cambia)
+        $this->increment('reserved_stock', $quantity);
+        
+        \Log::info('Stock reserved for sale', [
+            'product_id' => $this->id,
+            'quantity_reserved' => $quantity,
+            'stock_after' => $this->fresh()->stock,
+            'reserved_after' => $this->fresh()->reserved_stock
+        ]);
+    }
+
+    // ✅ REGLA 2: ACTUALIZAR RESERVA AL EDITAR VENTA
+    public function updateReservation(float $oldQuantity, float $newQuantity): void
+    {
+        // ✅ REGLA 2A: reserved_stock -= cantidad_anterior
+        $this->releaseReservedStock($oldQuantity);
+        
+        // ✅ REGLA 2B: reserved_stock += nueva_cantidad
+        $this->reserveStock($newQuantity);
+        
+        \Log::info('Sale reservation updated', [
+            'product_id' => $this->id,
+            'old_quantity' => $oldQuantity,
+            'new_quantity' => $newQuantity,
+            'stock_after' => $this->fresh()->stock,
+            'reserved_after' => $this->fresh()->reserved_stock
+        ]);
+    }
+
+    // ✅ MÉTODO PARA LIBERAR STOCK RESERVADO
+    public function releaseReservedStock(float $quantity): void
+    {
+        $toRelease = min($quantity, $this->reserved_stock);
+        if ($toRelease > 0) {
+            $this->decrement('reserved_stock', $toRelease);
+        }
+    }
+
+    // ✅ REGLA 3: CONFIRMAR ENTREGA DE VENTA
+    public function confirmSaleDelivery(float $quantity): void
+    {
+        if ($this->reserved_stock < $quantity) {
+            throw new \InvalidArgumentException(
+                "Stock reservado insuficiente. Reservado: {$this->reserved_stock}, cantidad a entregar: {$quantity}"
+            );
+        }
+        
+        if ($this->stock < $quantity) {
+            throw new \InvalidArgumentException(
+                "Stock total insuficiente. Stock: {$this->stock}, cantidad a entregar: {$quantity}"
+            );
+        }
+        
+        // ✅ REGLA 3: reserved_stock -= cantidad, stock -= cantidad
+        $this->decrement('reserved_stock', $quantity);
+        $this->decrement('stock', $quantity);
+        
+        \Log::info('Sale delivery confirmed', [
+            'product_id' => $this->id,
+            'quantity_delivered' => $quantity,
+            'stock_after' => $this->fresh()->stock,
+            'reserved_after' => $this->fresh()->reserved_stock
+        ]);
+    }
+
+    // ✅ REGLA 4 CORREGIDA: PROCESAR DEVOLUCIÓN DE VENTA
+    public function processSaleReturn(float $quantity, bool $wasDelivered = true): void
+    {
+        if ($wasDelivered) {
+            // ✅ REGLA 4A: Ya se entregó, SOLO restaurar stock (no hay reserved_stock que tocar)
+            $this->increment('stock', $quantity);
+            
+            \Log::info('Sale return processed (was delivered)', [
                 'product_id' => $this->id,
-                'product_code' => $this->code,
-                'current_stock' => $this->stock,
-                'min_stock' => $this->min_stock
+                'quantity_returned' => $quantity,
+                'stock_after' => $this->fresh()->stock,
+                'reserved_after' => $this->fresh()->reserved_stock
+            ]);
+        } else {
+            // ✅ REGLA 4B: NO se entregó, restaurar stock Y liberar reserva
+            $this->increment('stock', $quantity);
+            $this->releaseReservedStock($quantity);
+            
+            \Log::info('Sale return processed (not delivered)', [
+                'product_id' => $this->id,
+                'quantity_returned' => $quantity,
+                'stock_after' => $this->fresh()->stock,
+                'reserved_after' => $this->fresh()->reserved_stock
             ]);
         }
     }
 
-    // ✅ MÉTODOS ADICIONALES DE STOCK
-    public function hasStock(float $requestedQuantity = 1): bool
+    // ✅ REGLA 5: CANCELAR VENTA
+    public function cancelSale(float $quantity): void
     {
-        return $this->stock >= $requestedQuantity;
+        // ✅ REGLA 5: reserved_stock -= cantidad, stock += cantidad
+        $this->releaseReservedStock($quantity);
+        $this->increment('stock', $quantity);
+        
+        \Log::info('Sale cancelled', [
+            'product_id' => $this->id,
+            'quantity_cancelled' => $quantity,
+            'stock_after' => $this->fresh()->stock,
+            'reserved_after' => $this->fresh()->reserved_stock
+        ]);
     }
 
-    public function hasInfiniteStock(): bool
+    // ✅ REGLA 6: PROCESAR COMPRA
+    public function processPurchase(float $quantity): void
     {
-        // Si el producto tiene stock negativo, considerarlo como stock infinito
-        return $this->stock < 0;
+        // ✅ REGLA 6: stock += cantidad (reserved_stock no se toca)
+        $this->increment('stock', $quantity);
+        
+        \Log::info('Purchase processed', [
+            'product_id' => $this->id,
+            'quantity_purchased' => $quantity,
+            'stock_after' => $this->fresh()->stock
+        ]);
     }
 
-    public function canSell(float $quantity): bool
+    // ✅ REGLA 7: CANCELAR COMPRA
+    public function cancelPurchase(float $quantity): void
     {
-        return $this->hasInfiniteStock() || $this->hasStock($quantity);
-    }
-
-    public function isLowStock(): bool
-    {
-        return $this->stock <= $this->min_stock;
-    }
-
-    public function isOutOfStock(): bool
-    {
-        return $this->stock <= 0;
-    }
-
-    public function getStockStatus(): string
-    {
-        if ($this->isOutOfStock()) {
-            return 'out_of_stock';
-        } elseif ($this->isLowStock()) {
-            return 'low_stock';
-        } elseif ($this->stock >= $this->max_stock) {
-            return 'overstock';
+        // ✅ REGLA 7: stock -= cantidad
+        if ($this->stock < $quantity) {
+            throw new \InvalidArgumentException(
+                "No se puede cancelar la compra. Stock insuficiente: {$this->stock}, cantidad a restar: {$quantity}"
+            );
         }
-        return 'normal';
+        
+        $this->decrement('stock', $quantity);
+        
+        \Log::info('Purchase cancelled', [
+            'product_id' => $this->id,
+            'quantity_cancelled' => $quantity,
+            'stock_after' => $this->fresh()->stock
+        ]);
     }
 
     /**
@@ -518,25 +631,6 @@ class Product extends Model
     }
 
     /**
-     * Reserve stock for an order or operation
-     */
-    public function reserveStock(float $quantity): void
-    {
-        if (!$this->hasAvailableStock($quantity)) {
-            throw new \InvalidArgumentException("Stock disponible insuficiente. Stock disponible: {$this->available_stock}, cantidad solicitada: {$quantity}");
-        }
-        $this->increment('reserved_stock', $quantity);
-    }
-
-    /**
-     * Release reserved stock, adjusting the reserved amount
-     */
-    public function releaseReservedStock(float $quantity): void
-    {
-        $this->decrement('reserved_stock', min($quantity, $this->reserved_stock));
-    }
-
-    /**
      * Obtener precio del producto para una zona específica
      */
     public function getPriceForZone(?int $zoneId): float
@@ -544,12 +638,12 @@ class Product extends Model
         if (!$zoneId) {
             return (float) $this->price;
         }
-        
+
         $zonePriceDetail = $this->productPriceDetails()
             ->where('zone_id', $zoneId)
             ->active()
             ->first();
-        
+
         return $zonePriceDetail ? (float) $zonePriceDetail->price : (float) $this->price;
     }
 
@@ -576,12 +670,12 @@ class Product extends Model
                 'has_zone_price' => false
             ];
         }
-        
+
         $zonePriceDetail = $this->productPriceDetails()
             ->where('zone_id', $zoneId)
             ->active()
             ->first();
-        
+
         if ($zonePriceDetail) {
             return [
                 'price' => (float) $zonePriceDetail->price,
@@ -590,11 +684,28 @@ class Product extends Model
                 'zone_price_detail_id' => $zonePriceDetail->id
             ];
         }
-        
+
         return [
             'price' => (float) $this->price,
             'source' => 'base_price_fallback',
             'has_zone_price' => false
+        ];
+    }
+
+    /**
+     * Obtener información completa de stock
+     */
+    public function getStockInfo(): array
+    {
+        return [
+            'total_stock' => $this->stock,
+            'reserved_stock' => $this->reserved_stock,
+            'available_stock' => $this->available_stock,
+            'min_stock' => $this->min_stock,
+            'max_stock' => $this->max_stock,
+            'stock_status' => $this->getStockStatus(),
+            'can_sell' => $this->available_stock > 0,
+            'is_low_stock' => $this->available_stock <= $this->min_stock
         ];
     }
 }
