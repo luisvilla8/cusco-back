@@ -34,12 +34,12 @@ class MeasureTypeRepository
         
         if (!empty($filters['search'])) {
             $query->where(function ($q) use ($filters) {
-                $q->where('name', 'like', '%' . $filters['search'] . '%')          // ✅ CAMBIO: description → name
-                  ->orWhere('symbol', 'like', '%' . $filters['search'] . '%');     // ✅ CAMBIO: acronym → symbol
+                $q->where('name', 'like', '%' . $filters['search'] . '%')
+                  ->orWhere('symbol', 'like', '%' . $filters['search'] . '%');
             });
         }
 
-        $sortBy = $filters['sort_by'] ?? 'name';  // ✅ CAMBIO: description → name
+        $sortBy = $filters['sort_by'] ?? 'name';
         $sortOrder = $filters['sort_order'] ?? 'asc';
         $query->orderBy($sortBy, $sortOrder);
 
@@ -49,9 +49,9 @@ class MeasureTypeRepository
     public function getActiveForDropdown(): Collection
     {
         return $this->model->active()
-            ->select('id', 'name', 'symbol')                    // ✅ CAMBIO: description, acronym → name, symbol
+            ->select('id', 'name', 'symbol')
             ->withCount('products') 
-            ->orderBy('name', 'asc')                            // ✅ CAMBIO: description → name
+            ->orderBy('name', 'asc')
             ->get();
     }
 
@@ -59,7 +59,7 @@ class MeasureTypeRepository
     {
         return $this->model->active()
             ->withCount('products') 
-            ->orderBy('name', 'asc')                            // ✅ CAMBIO: description → name
+            ->orderBy('name', 'asc')
             ->get();
     }
 
@@ -99,15 +99,23 @@ class MeasureTypeRepository
             $measureType = $this->findWithTrashedAndCount($id);
             if (!$measureType) return null;
             
-            // Create snapshot
-            $snapshot = $measureType->replicate();
-            $snapshot->id = $measureType->id;
-            $snapshot->products_count = $measureType->products_count;
-            $snapshot->deleted_at = $measureType->deleted_at;
-            $snapshot->exists = true;
+            // ✅ CORRECCIÓN: No modificar products_count manualmente
+            // Simplemente crear un snapshot simple sin modificar propiedades calculadas
+            $snapshot = [
+                'id' => $measureType->id,
+                'name' => $measureType->name,
+                'symbol' => $measureType->symbol,
+                'description' => $measureType->description,
+                'products_count' => $measureType->products_count, // Solo leer, no modificar
+                'deleted_at' => $measureType->deleted_at,
+                'created_at' => $measureType->created_at,
+                'updated_at' => $measureType->updated_at,
+            ];
             
             $measureType->forceDelete();
-            return $snapshot;
+            
+            // ✅ RETORNAR UN OBJETO SIMPLE CON LOS DATOS
+            return (object) $snapshot;
         });
     }
 }

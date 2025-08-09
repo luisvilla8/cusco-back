@@ -160,10 +160,10 @@ class TransactionRepository
                                 throw new \InvalidArgumentException("El producto con ID {$detail['product_id']} no existe o está inactivo.");
                             }
                             
-                            // ✅ VALIDAR STOCK DISPONIBLE PARA VENTAS (REGLA 1)
+                            // ✅ VALIDAR STOCK DISPONIBLE SOLO PARA VENTAS
                             if ($transactionType && $transactionType->code === 'SALE') {
-                                $availableStock = $product->stock - $product->reserved_stock;
-                                if ($availableStock < $detail['quantity']) {
+                                if (!$product->hasSufficientStock($detail['quantity'])) {
+                                    $availableStock = $product->getAvailableStock();
                                     throw new \InvalidArgumentException(
                                         "Stock disponible insuficiente para {$product->name}. " .
                                         "Stock total: {$product->stock}, reservado: {$product->reserved_stock}, " .
@@ -172,7 +172,6 @@ class TransactionRepository
                                 }
                             }
                             
-                            // ✅ VALIDAR CANTIDADES POSITIVAS
                             if ($detail['quantity'] <= 0) {
                                 throw new \InvalidArgumentException("La cantidad debe ser mayor a 0 para el producto {$product->name}");
                             }
@@ -188,7 +187,7 @@ class TransactionRepository
                 $total = $data['total'] ?? collect($data['details'])->sum(fn($detail) => $detail['price'] * $detail['quantity']);
                 $amountPaid = $data['amount_paid'] ?? collect($data['payments'] ?? [])->sum('amount_paid');
 
-                // ✅ CREAR DATOS DE LA TRANSACCIÓN (VARIABLE FALTANTE)
+                // ✅ CREAR DATOS DE LA TRANSACCIÓN
                 $transactionData = [
                     'agent_id' => $data['agent_id'],
                     'user_id' => $data['user_id'],
@@ -212,10 +211,10 @@ class TransactionRepository
                     $transactionData['relation_to'] = $data['relation_to'];
                 }
 
-                // ✅ CREAR TRANSACCIÓN
+                // CREAR TRANSACCIÓN (LAS REGLAS DE STOCK SE APLICAN EN BOOT)
                 $transaction = $this->model->create($transactionData);
 
-                // ✅ CREAR DETALLES
+                // CREAR DETALLES PRIMERO
                 foreach ($data['details'] as $detailData) {
                     TransactionDetail::create([
                         'transaction_id' => $transaction->id,
@@ -225,7 +224,7 @@ class TransactionRepository
                     ]);
                 }
 
-                // ✅ CREAR PAGOS
+                // CREAR PAGOS
                 if (!empty($data['payments'])) {
                     foreach ($data['payments'] as $paymentData) {
                         TransactionPayment::create([
@@ -237,8 +236,28 @@ class TransactionRepository
                     }
                 }
 
-                // ✅ RECARGAR TRANSACCIÓN
+                // RECARGAR CON DETALLES PARA QUE LAS REGLAS DE STOCK FUNCIONEN
                 $transaction = $transaction->fresh()->load([
+                    'transactionDetails.product',
+                    'transactionType',
+                    'agent',
+                    'user',
+                    'zone',
+                    'trip',
+                    'transactionPayments.paymentMethod'
+                ]);
+
+                // APLICAR REGLAS DE STOCK MANUALMENTE SI NO SE APLICARON EN BOOT
+                if ($transaction->transactionDetails->count() > 0) {
+                    $transaction->applyStockRulesOnCreate();
+                }
+
+                // CREAR EGRESO PARA COMPRAS
+                if ($this->isPurchaseTransaction($transaction)) {
+                    $this->createPurchaseEgress($transaction);
+                }
+
+                return $transaction->load([
                     'agent',
                     'user',
                     'zone',
@@ -247,20 +266,6 @@ class TransactionRepository
                     'transactionDetails.product.measureType',
                     'transactionPayments.paymentMethod'
                 ]);
-
-                // ✅ APLICAR REGLAS DE STOCK SEGÚN TIPO
-                if (empty($data['relation_to'])) {
-                    if ($this->isSaleTransaction($transaction) && $transaction->isDeliveryPending()) {
-                        // ✅ REGLA 1: VENTA PENDING - Reservar stock
-                        $transaction->reserveStockForSale();
-                    }
-
-                    if ($this->isPurchaseTransaction($transaction)) {
-                        $this->createPurchaseEgress($transaction);
-                    }
-                }
-
-                return $transaction;
             } catch (\Exception $e) {
                 throw $e;
             }
@@ -419,7 +424,7 @@ class TransactionRepository
                     throw new \Exception('Transacción no encontrada');
                 }
 
-                // ✅ ACTUALIZAR DETALLES CON REGLA 2 CORREGIDA
+                // ✅ ACTUALIZAR DETALLES CON REGLAS CORREGIDAS
                 if (isset($data['details']) && !empty($data['details'])) {
                     $oldDetails = [];
                     
@@ -448,17 +453,6 @@ class TransactionRepository
                             // ✅ CALCULAR STOCK DISPONIBLE DESPUÉS DE LIBERAR LA RESERVA ACTUAL
                             $currentReservedStock = $product->reserved_stock;
                             $availableStockAfterRelease = $product->stock - ($currentReservedStock - $oldQuantityForProduct);
-                            
-                            \Log::info('Stock validation during update', [
-                                'product_id' => $productId,
-                                'product_name' => $product->name,
-                                'total_stock' => $product->stock,
-                                'current_reserved' => $currentReservedStock,
-                                'old_quantity' => $oldQuantityForProduct,
-                                'new_quantity' => $newQuantity,
-                                'available_after_release' => $availableStockAfterRelease,
-                                'calculation' => "stock({$product->stock}) - (reserved({$currentReservedStock}) - old({$oldQuantityForProduct})) = {$availableStockAfterRelease}"
-                            ]);
                             
                             if ($availableStockAfterRelease < $newQuantity) {
                                 throw new \InvalidArgumentException(
@@ -498,11 +492,10 @@ class TransactionRepository
                     // ✅ ACTUALIZAR EL TOTAL CALCULADO
                     $transaction->update(['total' => $totalCalculated]);
 
-                    // ✅ APLICAR REGLA 2: ACTUALIZAR RESERVAS CORRECTAMENTE
+                    // ✅ APLICAR REGLAS DE ACTUALIZACIÓN PARA VENTAS PENDIENTES
                     if ($transaction->isSale() && $transaction->isDeliveryPending()) {
                         $transaction = $transaction->fresh(['transactionDetails.product']);
                         
-                        // ✅ CONVERTIR OLDDETAILS AL FORMATO ESPERADO
                         $oldDetailsFormatted = [];
                         foreach ($oldDetails as $productId => $quantity) {
                             $oldDetailsFormatted[] = [
@@ -517,10 +510,8 @@ class TransactionRepository
 
                 // ✅ ACTUALIZAR PAGOS SI SE PROPORCIONAN
                 if (isset($data['payments'])) {
-                    // Eliminar pagos existentes
                     $transaction->transactionPayments()->forceDelete();
 
-                    // Crear nuevos pagos
                     $totalPaid = 0;
                     foreach ($data['payments'] as $paymentData) {
                         TransactionPayment::create([
@@ -533,7 +524,6 @@ class TransactionRepository
                         $totalPaid += $paymentData['amount_paid'];
                     }
 
-                    // Actualizar amount_paid
                     $transaction->update(['amount_paid' => $totalPaid]);
                 }
 

@@ -171,7 +171,7 @@ class TransactionPayment extends Model
         $proposedCode = "{$prefix}-{$date}-{$sequentialNumber}";
         
         // ✅ VERIFICAR QUE EL CÓDIGO NO EXISTA (INCLUYENDO SOFT DELETED)
-        $exists = static::withTrashed()
+        $exists = static::withTrashed() // ✅ INCLUIR SOFT DELETED EN VERIFICACIÓN
             ->where('code', $proposedCode)
             ->exists();
         
@@ -196,6 +196,15 @@ class TransactionPayment extends Model
                 $proposedCode = "{$prefix}-{$date}-{$timestamp}{$microtime}";
             }
         }
+        
+        \Log::info('TransactionPayment code generated', [
+            'prefix' => $prefix,
+            'date' => $date,
+            'daily_count' => $dailyCount,
+            'attempts' => $attempt,
+            'final_code' => $proposedCode,
+            'includes_soft_deleted' => true
+        ]);
         
         return $proposedCode;
     }

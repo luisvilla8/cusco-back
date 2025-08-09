@@ -118,14 +118,27 @@ class ZoneRepository
             $zone = $this->findWithTrashedAndCount($id);
             if (!$zone) return null;
             
-            // Create snapshot
-            $snapshot = $zone->replicate();
-            $snapshot->id = $zone->id;
-            $snapshot->product_price_details_count = $zone->product_price_details_count;
-            $snapshot->deleted_at = $zone->deleted_at;
-            $snapshot->exists = true;
+            // ✅ CORRECCIÓN: Crear un array en lugar de modificar propiedades
+            $snapshotData = [
+                'id' => $zone->id,
+                'name' => $zone->name,
+                'code' => $zone->code,
+                'description' => $zone->description,
+                'location_url' => $zone->location_url,
+                'created_at' => $zone->created_at,
+                'updated_at' => $zone->updated_at,
+                'deleted_at' => $zone->deleted_at,
+                'product_price_details_count' => $zone->product_price_details_count,
+            ];
             
             $zone->forceDelete();
+            
+            // ✅ CREAR NUEVO OBJETO CON LOS DATOS
+            $snapshot = new Zone();
+            $snapshot->fill($snapshotData);
+            $snapshot->setAttribute('product_price_details_count', $snapshotData['product_price_details_count']);
+            $snapshot->exists = false; // Ya no existe en BD
+            
             return $snapshot;
         });
     }

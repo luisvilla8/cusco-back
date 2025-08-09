@@ -73,11 +73,6 @@ class Zone extends Model
     ];
 
     // ✅ RELACIONES
-    public function users(): HasMany
-    {
-        return $this->hasMany(User::class);
-    }
-
     public function userZones(): HasMany
     {
         return $this->hasMany(UserZone::class);
@@ -86,9 +81,9 @@ class Zone extends Model
     public function usersViaZones(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'user_zones')
-                    ->withTimestamps()
-                    ->withPivot('deleted_at')
-                    ->wherePivot('deleted_at', null);
+            ->withTimestamps()
+            ->withPivot('deleted_at')
+            ->wherePivot('deleted_at', null);
     }
 
     public function productPriceDetails(): HasMany
@@ -126,9 +121,15 @@ class Zone extends Model
     {
         return $query->where(function ($q) use ($search) {
             $q->where('name', 'LIKE', "%{$search}%")
-              ->orWhere('code', 'LIKE', "%{$search}%")
-              ->orWhere('description', 'LIKE', "%{$search}%");
+                ->orWhere('code', 'LIKE', "%{$search}%")
+                ->orWhere('description', 'LIKE', "%{$search}%");
         });
+    }
+
+    public function scopeOrderByUsage(Builder $query, string $order = 'desc'): Builder
+    {
+        return $query->withCount('productPriceDetails')
+                     ->orderBy('product_price_details_count', $order);
     }
 
     // ✅ MÉTODOS DE NEGOCIO
@@ -139,7 +140,8 @@ class Zone extends Model
 
     public function hasUsers(): bool
     {
-        return $this->users()->exists() || $this->userZones()->exists();
+        // ✅ USAR SOLO userZones() que ya está bien definida
+        return $this->userZones()->exists();
     }
 
     public function hasTransactions(): bool
@@ -154,9 +156,9 @@ class Zone extends Model
 
     public function canBeDeleted(): bool
     {
-        return !$this->hasUsers() && 
-               !$this->hasTransactions() && 
-               !$this->hasTrips();
+        return !$this->hasUsers() &&
+            !$this->hasTransactions() &&
+            !$this->hasTrips();
     }
 
     public function generateCode(): string
@@ -164,7 +166,7 @@ class Zone extends Model
         // Generar código basado en el nombre
         $baseName = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $this->name), 0, 6));
         $baseName = $baseName ?: 'ZONE';
-        
+
         // Agregar número secuencial
         $counter = 1;
         do {
@@ -195,7 +197,7 @@ class Zone extends Model
             $coords = explode(',', $this->location_url);
             $lat = (float) $coords[0];
             $lng = (float) $coords[1];
-            
+
             return $lat >= -90 && $lat <= 90 && $lng >= -180 && $lng <= 180;
         }
 
@@ -220,7 +222,7 @@ class Zone extends Model
             if (empty($zone->code)) {
                 $zone->code = $zone->generateCode();
             }
-            
+
             // Normalizar datos
             $zone->name = ucwords(trim($zone->name));
             $zone->code = strtoupper(trim($zone->code));

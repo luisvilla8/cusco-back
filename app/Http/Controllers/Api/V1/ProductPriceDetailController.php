@@ -22,7 +22,7 @@ class ProductPriceDetailController extends Controller
     ) {}
 
     /**
-     * ✅ OBTENER PRECIOS AGRUPADOS POR PRODUCTO (PRINCIPAL)
+     *  OBTENER PRECIOS AGRUPADOS POR PRODUCTO (PRINCIPAL)
      */
     public function index(IndexProductPriceDetailRequest $request): JsonResponse
     {
@@ -31,7 +31,7 @@ class ProductPriceDetailController extends Controller
     }
 
     /**
-     * ✅ OBTENER LISTA PLANA DE PRECIOS
+     *  OBTENER LISTA PLANA DE PRECIOS
      */
     public function flat(IndexProductPriceDetailRequest $request): JsonResponse
     {
@@ -40,7 +40,7 @@ class ProductPriceDetailController extends Controller
     }
 
     /**
-     * ✅ OBTENER PRECIO ESPECÍFICO
+     *  OBTENER PRECIO ESPECÍFICO
      */
     public function show(int $id): JsonResponse
     {
@@ -49,7 +49,7 @@ class ProductPriceDetailController extends Controller
     }
 
     /**
-     * ✅ CREAR PRECIOS MASIVOS (SOLO CREAR)
+     *  CREAR PRECIOS MASIVOS (SOLO CREAR)
      */
     public function storeMassive(StoreMassiveProductPriceDetailRequest $request): JsonResponse
     {
@@ -58,7 +58,7 @@ class ProductPriceDetailController extends Controller
     }
 
     /**
-     * ✅ ACTUALIZAR PRECIOS MASIVOS (SOLO ACTUALIZAR)
+     *  ACTUALIZAR PRECIOS MASIVOS (SOLO ACTUALIZAR)
      */
     public function updateMassive(StoreMassiveProductPriceDetailRequest $request): JsonResponse
     {
@@ -67,7 +67,7 @@ class ProductPriceDetailController extends Controller
     }
 
     /**
-     * ✅ OBTENER PRECIOS POR ZONAS DE UN PRODUCTO ESPECÍFICO
+     *  OBTENER PRECIOS POR ZONAS DE UN PRODUCTO ESPECÍFICO
      */
     public function getProductZonePrices(int $productId): JsonResponse
     {
@@ -76,7 +76,7 @@ class ProductPriceDetailController extends Controller
     }
 
     /**
-     * ✅ NUEVO: LIMPIAR TODOS LOS PRECIOS DE UN PRODUCTO
+     *  NUEVO: LIMPIAR TODOS LOS PRECIOS DE UN PRODUCTO
      */
     public function clearProductPrices(int $productId): JsonResponse
     {
@@ -85,7 +85,7 @@ class ProductPriceDetailController extends Controller
     }
 
     /**
-     * ✅ ACTUALIZAR PRECIO ESPECÍFICO
+     *  ACTUALIZAR PRECIO ESPECÍFICO
      */
     public function update(UpdateProductPriceDetailRequest $request, int $id): JsonResponse
     {
@@ -94,7 +94,7 @@ class ProductPriceDetailController extends Controller
     }
 
     /**
-     * ✅ ELIMINAR PRECIO (SOFT DELETE)
+     *  ELIMINAR PRECIO (SOFT DELETE)
      */
     public function destroy(int $id): JsonResponse
     {
@@ -103,7 +103,7 @@ class ProductPriceDetailController extends Controller
     }
 
     /**
-     * ✅ ELIMINAR PRECIO PERMANENTEMENTE
+     *  ELIMINAR PRECIO PERMANENTEMENTE
      */
     public function forceDelete(int $id): JsonResponse
     {
@@ -112,7 +112,7 @@ class ProductPriceDetailController extends Controller
     }
 
     /**
-     * ✅ LISTA PARA DROPDOWNS
+     *  LISTA PARA DROPDOWNS
      */
     public function list(): JsonResponse
     {

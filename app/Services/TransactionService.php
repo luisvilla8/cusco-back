@@ -402,47 +402,106 @@ class TransactionService
                 return ResponseHelper::badRequest('Esta transacción no puede recibir pagos en su estado actual');
             }
 
-            // ✅ VALIDAR MONTO DEL PAGO
-            $remainingAmount = $transaction->getRemainingAmount();
+            // ✅ VALIDACIÓN CORREGIDA CON getCurrentDebt()
             $paymentAmount = (float) $paymentData['amount_paid'];
+            $currentDebt = $transaction->getCurrentDebt(); // ✅ USAR getCurrentDebt()
+            
+            // ✅ LOGGING DETALLADO PARA DEBUG
+            $this->logInfo('Payment validation in service using getCurrentDebt', [
+                'transaction_id' => $id,
+                'transaction_code' => $transaction->code,
+                'transaction_total' => $transaction->total,
+                'transaction_amount_paid' => $transaction->amount_paid,
+                'current_debt' => $currentDebt,
+                'payment_surplus' => $transaction->getPaymentSurplus(),
+                'requested_payment' => $paymentAmount,
+                'total_returned' => $transaction->getTotalReturnedAmount(),
+                'total_refunded' => $transaction->getTotalRefundedAmount(),
+                'payment_method_id' => $paymentData['payment_method_id'] ?? null,
+                'description' => $paymentData['description'] ?? null
+            ]);
 
-            if ($paymentAmount > $remainingAmount) {
+            // ✅ VERIFICAR QUE LA TRANSACCIÓN NO ESTÉ COMPLETAMENTE PAGADA
+            if ($currentDebt <= 0.01) {
+                $formattedSurplus = 'S/ ' . number_format($transaction->getPaymentSurplus(), 2);
                 return ResponseHelper::badRequest(
-                    "El monto del pago (S/ " . number_format($paymentAmount, 2) . 
-                    ") excede el monto pendiente (S/ " . number_format($remainingAmount, 2) . ")"
+                    "Esta transacción ya está completamente pagada. " .
+                    ($transaction->getPaymentSurplus() > 0 ? "Tiene un excedente de {$formattedSurplus}." : "")
                 );
             }
 
-            // ✅ AGREGAR EL PAGO
-            $updatedTransaction = $this->transactionRepository->addPayment($id, $paymentData);
-            
-            // ✅ CREAR EGRESO ADICIONAL SOLO SI ES COMPRA Y CON FECHA CORRECTA
-            if ($this->isPurchaseTransaction($updatedTransaction)) {
-                try {
-                    $this->createAdditionalPurchaseEgressSafe($updatedTransaction, $paymentAmount);
-                } catch (\Exception $e) {
-                    $this->logError('Error creating additional egress for payment', [
-                        'transaction_id' => $id,
-                        'payment_amount' => $paymentAmount,
-                        'error' => $e->getMessage()
-                    ]);
-                    
-                    // ✅ NO FALLAR TODO EL PROCESO POR UN ERROR EN EL EGRESO
-                    $this->logWarning('Continuing without creating egress due to validation error');
-                }
+            // ✅ VERIFICAR QUE EL PAGO NO EXCEDA LA DEUDA ACTUAL
+            if ($paymentAmount > $currentDebt) {
+                $formattedDebt = 'S/ ' . number_format($currentDebt, 2);
+                $formattedRequested = 'S/ ' . number_format($paymentAmount, 2);
+                $formattedTotal = 'S/ ' . number_format($transaction->total, 2);
+                $formattedPaid = 'S/ ' . number_format($transaction->amount_paid, 2);
+                
+                return ResponseHelper::badRequest(
+                    "El monto del pago ({$formattedRequested}) excede la deuda actual ({$formattedDebt}). " .
+                    "Total: {$formattedTotal}, pagado: {$formattedPaid}. " .
+                    "Deuda restante: {$formattedDebt}."
+                );
             }
-            
-            $transactionDTO = TransactionMapper::modelToDTO($updatedTransaction);
 
-            $this->logInfo('Payment added to transaction', [
-                'transaction_id' => $id,
-                'amount_paid' => $paymentAmount,
-                'remaining_amount' => $updatedTransaction->getRemainingAmount(),
-                'total_paid_now' => $updatedTransaction->amount_paid,
-                'payment_status' => $updatedTransaction->payment_status
-            ]);
+            // ✅ VALIDAR QUE EL MONTO SEA POSITIVO
+            if ($paymentAmount <= 0) {
+                return ResponseHelper::badRequest('El monto del pago debe ser mayor a cero.');
+            }
 
-            return ResponseHelper::success($transactionDTO, 'Pago agregado exitosamente');
+            // ✅ VALIDAR MÉTODO DE PAGO
+            $paymentMethod = \App\Models\PaymentMethod::active()->find($paymentData['payment_method_id']);
+            if (!$paymentMethod) {
+                return ResponseHelper::badRequest('El método de pago seleccionado no está disponible.');
+            }
+
+            // ✅ AGREGAR EL PAGO
+            try {
+                $updatedTransaction = $this->transactionRepository->addPayment($id, $paymentData);
+                
+                $transactionDTO = TransactionMapper::modelToDTO($updatedTransaction);
+                
+                // ✅ CALCULAR INFORMACIÓN ACTUALIZADA PARA EL MENSAJE
+                $newCurrentDebt = $updatedTransaction->getCurrentDebt();
+                $newPaymentStatus = $updatedTransaction->payment_status;
+
+                $this->logInfo('Payment added successfully with getCurrentDebt', [
+                    'transaction_id' => $id,
+                    'payment_amount' => $paymentAmount,
+                    'payment_method' => $paymentMethod->name,
+                    'old_debt' => $currentDebt,
+                    'new_debt' => $newCurrentDebt,
+                    'new_payment_status' => $newPaymentStatus,
+                    'debt_reduction' => $currentDebt - $newCurrentDebt
+                ]);
+
+                // ✅ GENERAR MENSAJE INFORMATIVO CORREGIDO
+                $message = 'Pago agregado exitosamente. ';
+                $message .= 'Monto pagado: S/ ' . number_format($paymentAmount, 2) . '. ';
+                
+                if ($newCurrentDebt > 0.01) {
+                    $message .= 'Deuda restante: S/ ' . number_format($newCurrentDebt, 2) . '.';
+                } else {
+                    $message .= '¡Transacción completamente pagada!';
+                    
+                    if ($updatedTransaction->getPaymentSurplus() > 0) {
+                        $formattedSurplus = 'S/ ' . number_format($updatedTransaction->getPaymentSurplus(), 2);
+                        $message .= " Excedente: {$formattedSurplus}.";
+                    }
+                }
+
+                return ResponseHelper::success($transactionDTO, $message);
+                
+            } catch (\Exception $e) {
+                $this->logError('Error adding payment', [
+                    'transaction_id' => $id,
+                    'payment_data' => $paymentData,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+                
+                return ResponseHelper::internalServerError('Error interno al agregar el pago: ' . $e->getMessage());
+            }
         });
     }
 

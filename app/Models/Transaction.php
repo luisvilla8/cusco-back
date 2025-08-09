@@ -45,7 +45,6 @@ class Transaction extends Model
         'payment_status' => self::PAYMENT_STATUS_PENDING,
     ];
 
-    // ✅ STATUS CONSTANTS
     const DELIVERY_STATUS_PENDING = 'PENDING';
     const DELIVERY_STATUS_DELIVERED = 'DELIVERED';
     const DELIVERY_STATUS_RETURNED = 'RETURNED';
@@ -56,13 +55,11 @@ class Transaction extends Model
     const PAYMENT_STATUS_PAID = 'PAID';
     const PAYMENT_STATUS_CANCELLED = 'CANCELLED';
 
-    // ✅ TRANSACTION TYPE CONSTANTS
     const TYPE_SALE = 'SALE';
     const TYPE_PURCHASE = 'PURCHASE';
     const TYPE_RETURN_SALE = 'RETURN_SALE';
     const TYPE_RETURN_PURCHASE = 'RETURN_PURCHASE';
 
-    // ✅ BOOT METHOD CORREGIDO
     protected static function boot()
     {
         parent::boot();
@@ -78,8 +75,11 @@ class Transaction extends Model
         });
 
         static::created(function ($transaction) {
-            // ✅ APLICAR REGLAS DE STOCK DESPUÉS DE CREAR TRANSACCIÓN
-            $transaction->applyStockRulesOnCreate();
+            $transaction = $transaction->fresh(['transactionDetails.product', 'transactionType']);
+            
+            if ($transaction && $transaction->transactionDetails->count() > 0) {
+                $transaction->applyStockRulesOnCreate();
+            }
         });
 
         static::updating(function ($transaction) {
@@ -90,564 +90,59 @@ class Transaction extends Model
 
         static::deleting(function ($transaction) {
             if (!$transaction->isForceDeleting()) {
-                // ✅ APLICAR REGLA 5 AL SOFT DELETE
+                $transaction->load(['transactionDetails.product', 'transactionType']);
                 $transaction->applyStockRulesOnCancel();
             }
         });
     }
 
-    // ✅ MÉTODO NUEVO: APLICAR REGLAS AL CREAR TRANSACCIÓN
-    private function applyStockRulesOnCreate(): void
+    // RELACIONES
+    public function agent(): BelongsTo
     {
-        $transactionType = $this->transactionType?->code;
-
-        if ($transactionType === self::TYPE_SALE && $this->isDeliveryPending()) {
-            // ✅ REGLA 1: VENTA PENDING - Solo reservar stock
-            $this->applySaleCreationRule();
-        } elseif ($transactionType === self::TYPE_SALE && $this->isDelivered()) {
-            // ✅ VENTA CREADA COMO ENTREGADA - Aplicar regla 3 directamente
-            $this->applySaleDeliveryRule();
-        } elseif ($transactionType === self::TYPE_PURCHASE && $this->isDelivered()) {
-            // ✅ REGLA 6: COMPRA ENTREGADA - Aumentar stock
-            $this->applyPurchaseRule();
-        } elseif ($transactionType === self::TYPE_RETURN_SALE) {
-            // ✅ REGLA 4: DEVOLUCIÓN DE VENTA
-            $this->applySaleReturnRule();
-        } elseif ($transactionType === self::TYPE_RETURN_PURCHASE) {
-            // ✅ DEVOLUCIÓN DE COMPRA - Reducir stock
-            $this->applyPurchaseReturnRule();
-        }
+        return $this->belongsTo(Agent::class);
     }
 
-    // ✅ REGLA 1: CREAR VENTA PENDING
-    private function applySaleCreationRule(): void
+    public function user(): BelongsTo
     {
-        foreach ($this->transactionDetails as $detail) {
-            $product = $detail->product;
-            if (!$product) continue;
-
-            // ✅ REGLA 1: reserved_stock += cantidad (stock no cambia)
-            $product->reserveStock($detail->quantity);
-        }
+        return $this->belongsTo(User::class);
     }
 
-    // ✅ REGLA 3: APLICAR ENTREGA DE VENTA
-    private function applySaleDeliveryRule(): void
+    public function zone(): BelongsTo
     {
-        foreach ($this->transactionDetails as $detail) {
-            $product = $detail->product;
-            if (!$product) continue;
-
-            // ✅ REGLA 3: reserved_stock -= cantidad, stock -= cantidad
-            $product->confirmSaleDelivery($detail->quantity);
-        }
+        return $this->belongsTo(Zone::class);
     }
 
-    // ✅ REGLA 6: APLICAR COMPRA
-    private function applyPurchaseRule(): void
+    public function transactionType(): BelongsTo
     {
-        foreach ($this->transactionDetails as $detail) {
-            $product = $detail->product;
-            if (!$product) continue;
-
-            // ✅ REGLA 6: stock += cantidad (reserved_stock no se toca)
-            $product->processPurchase($detail->quantity);
-        }
+        return $this->belongsTo(TransactionType::class);
     }
 
-    // ✅ REGLA 4 CORREGIDA: APLICAR DEVOLUCIÓN DE VENTA
-    private function applySaleReturnRule(): void
+    public function trip(): BelongsTo
     {
-        if (!$this->relation_to) return;
-
-        $originalTransaction = Transaction::find($this->relation_to);
-        if (!$originalTransaction) return;
-
-        $wasDelivered = $originalTransaction->isDelivered();
-
-        foreach ($this->transactionDetails as $detail) {
-            $product = $detail->product;
-            if (!$product) continue;
-
-            // ✅ REGLA 4: Según si fue entregado o no
-            $product->processSaleReturn(abs($detail->quantity), $wasDelivered);
-        }
+        return $this->belongsTo(Trip::class);
     }
 
-    // ✅ APLICAR DEVOLUCIÓN DE COMPRA
-    private function applyPurchaseReturnRule(): void
+    public function transactionDetails(): HasMany
     {
-        foreach ($this->transactionDetails as $detail) {
-            $product = $detail->product;
-            if (!$product) continue;
-
-            // Devolución de compra = reducir stock
-            $product->cancelPurchase(abs($detail->quantity));
-        }
+        return $this->hasMany(TransactionDetail::class);
     }
 
-    // ✅ REGLA 5 CORREGIDA: CANCELAR VENTA
-    private function applySaleCancellationRule(): void
+    public function transactionPayments(): HasMany
     {
-        $wasDelivered = $this->isDelivered();
-
-        foreach ($this->transactionDetails as $detail) {
-            $product = $detail->product;
-            if (!$product) continue;
-
-            if ($wasDelivered) {
-                // ✅ Ya entregado: Solo restaurar stock (no hay reserved_stock)
-                $product->increment('stock', $detail->quantity);
-
-                \Log::info('Delivered sale cancelled - stock restored', [
-                    'transaction_id' => $this->id,
-                    'product_id' => $product->id,
-                    'quantity_restored' => $detail->quantity,
-                    'stock_after' => $product->fresh()->stock
-                ]);
-            } else {
-                // ✅ REGLA 5: PENDING - reserved_stock -= cantidad, stock += cantidad
-                $product->cancelSale($detail->quantity);
-            }
-        }
+        return $this->hasMany(TransactionPayment::class);
     }
 
-    // ✅ REGLA 7: CANCELAR COMPRA
-    private function applyPurchaseCancellationRule(): void
+    public function originalTransaction(): BelongsTo
     {
-        if (!$this->isDelivered()) {
-            \Log::info('Pending purchase cancelled - no stock to revert', [
-                'transaction_id' => $this->id
-            ]);
-            return; // No hay stock que revertir si no se entregó
-        }
-
-        foreach ($this->transactionDetails as $detail) {
-            $product = $detail->product;
-            if (!$product) continue;
-
-            // ✅ REGLA 7: stock -= cantidad
-            $product->cancelPurchase($detail->quantity);
-        }
+        return $this->belongsTo(Transaction::class, 'relation_to');
     }
 
-    // ✅ REGLA 2 CORREGIDA: ACTUALIZAR RESERVAS AL EDITAR TRANSACCIÓN
-    public function updateSaleReservations(array $oldDetails, array $newDetails): void
+    public function returns(): HasMany
     {
-        if (!$this->isSale() || !$this->isDeliveryPending()) {
-            return;
-        }
-
-        // ✅ REGLA 2: Actualizar reservas de cada producto
-        $oldByProduct = collect($oldDetails)->groupBy('product_id');
-        $newByProduct = collect($newDetails)->groupBy('product_id');
-
-        // Obtener todos los productos afectados
-        $allProductIds = $oldByProduct->keys()->merge($newByProduct->keys())->unique();
-
-        foreach ($allProductIds as $productId) {
-            $product = Product::find($productId);
-            if (!$product) continue;
-
-            $oldQuantity = $oldByProduct->get($productId, collect())->sum('quantity');
-            $newQuantity = $newByProduct->get($productId, collect())->sum('quantity');
-
-            if ($oldQuantity != $newQuantity) {
-                // ✅ REGLA 2: Actualizar reserva correctamente
-                $product->updateReservation($oldQuantity, $newQuantity);
-            }
-        }
+        return $this->hasMany(Transaction::class, 'relation_to');
     }
 
-    // ✅ REVERTIR EFECTOS DE DEVOLUCIÓN CANCELADA
-    private function revertReturnEffects(): void
-    {
-        $returnType = $this->transactionType?->code;
-
-        foreach ($this->transactionDetails as $detail) {
-            $product = $detail->product;
-            if (!$product) continue;
-
-            $quantity = abs($detail->quantity);
-
-            switch ($returnType) {
-                case self::TYPE_RETURN_SALE:
-                    // ✅ CANCELAR DEVOLUCIÓN DE VENTA: Quitar el stock que se había restaurado
-                    if ($product->stock >= $quantity) {
-                        $product->decrement('stock', $quantity);
-
-                        \Log::info('Sale return cancelled - stock reduced', [
-                            'transaction_id' => $this->id,
-                            'product_id' => $product->id,
-                            'quantity_reduced' => $quantity,
-                            'stock_after' => $product->fresh()->stock
-                        ]);
-                    } else {
-                        \Log::warning('Insufficient stock to revert sale return cancellation', [
-                            'transaction_id' => $this->id,
-                            'product_id' => $product->id,
-                            'required_quantity' => $quantity,
-                            'current_stock' => $product->stock
-                        ]);
-                    }
-                    break;
-
-                case self::TYPE_RETURN_PURCHASE:
-                    // ✅ CANCELAR DEVOLUCIÓN DE COMPRA: Restaurar el stock que se había quitado
-                    $product->increment('stock', $quantity);
-
-                    \Log::info('Purchase return cancelled - stock restored', [
-                        'transaction_id' => $this->id,
-                        'product_id' => $product->id,
-                        'quantity_restored' => $quantity,
-                        'stock_after' => $product->fresh()->stock
-                    ]);
-                    break;
-            }
-        }
-
-        $this->revertRefunds();
-    }
-
-    // ✅ MÉTODO CORREGIDO: LIBERAR STOCK RESERVADO
-    private function releaseReservedStock(): void
-    {
-        if (!$this->isSale()) {
-            return;
-        }
-
-        foreach ($this->transactionDetails as $detail) {
-            $product = $detail->product;
-            if (!$product) continue;
-
-            $product->releaseReservedStock($detail->quantity);
-        }
-    }
-
-    // ✅ MÉTODO UNIFICADO: CANCELAR TRANSACCIONES
-    public function cancelTransaction(): void
-    {
-        DB::transaction(function () {
-            $this->validateCancellation();
-
-            if ($this->isOriginalTransaction()) {
-                $this->cancelOriginalTransactionWithCascade();
-            } elseif ($this->isReturn()) {
-                $this->cancelReturnTransaction();
-            }
-
-            // ✅ REGLA 5: MARCAR COMO CANCELADO Y SOFT DELETE
-            $this->update([
-                'delivery_status' => self::DELIVERY_STATUS_CANCELLED,
-                'payment_status' => self::PAYMENT_STATUS_CANCELLED
-            ]);
-
-            // ✅ REGLA 5: SOFT DELETE (deleted_at = fecha actual)
-            $this->delete();
-        });
-    }
-
-
-    // ✅ NUEVO MÉTODO: ANULAR TODAS LAS DEVOLUCIONES RELACIONADAS
-    private function cancelAllRelatedReturns(): void
-    {
-        $activeReturns = $this->returns()
-            ->whereNotIn('delivery_status', [self::DELIVERY_STATUS_CANCELLED])
-            ->whereNull('deleted_at')
-            ->get();
-
-        foreach ($activeReturns as $return) {
-            // Revertir efectos si la devolución ya estaba procesada
-            if ($return->delivery_status === self::DELIVERY_STATUS_RETURNED) {
-                $return->revertReturnEffects();
-            }
-
-            // Marcar como cancelada y soft delete
-            $return->update([
-                'delivery_status' => self::DELIVERY_STATUS_CANCELLED,
-                'payment_status' => self::PAYMENT_STATUS_CANCELLED
-            ]);
-
-            // Soft delete de detalles y pagos de la devolución
-            $return->softDeleteTransactionDetails();
-            $return->softDeleteTransactionPayments();
-
-            // Soft delete de la devolución
-            $return->delete();
-        }
-    }
-
-    // ✅ NUEVO MÉTODO: REVERTIR STOCK DE TRANSACCIÓN ENTREGADA
-    private function revertDeliveredTransactionStock(): void
-    {
-        $transactionType = $this->transactionType?->code;
-
-        foreach ($this->transactionDetails as $detail) {
-            $product = $detail->product;
-            if (!$product) continue;
-
-            $quantity = $detail->quantity;
-
-            switch ($transactionType) {
-                case self::TYPE_SALE:
-                    // Restaurar stock que se había reducido
-                    $product->updateStock($quantity, 'ADD');
-                    break;
-
-                case self::TYPE_PURCHASE:
-                    // Reducir stock que se había añadido
-                    if ($product->stock >= $quantity) {
-                        $product->updateStock($quantity, 'SUBTRACT');
-                    }
-                    break;
-            }
-        }
-    }
-
-    // ✅ NUEVO MÉTODO: SOFT DELETE DE DETALLES
-    private function softDeleteTransactionDetails(): void
-    {
-        $this->transactionDetails()->delete(); // Soft delete
-    }
-
-    // ✅ NUEVO MÉTODO: SOFT DELETE DE PAGOS
-    private function softDeleteTransactionPayments(): void
-    {
-        $this->transactionPayments()->delete(); // Soft delete
-    }
-
-    // ✅ ACTUALIZAR MÉTODO DE DEVOLUCIONES
-    private function cancelReturnTransaction(): void
-    {
-        if ($this->delivery_status === self::DELIVERY_STATUS_RETURNED) {
-            $this->revertReturnEffects();
-        }
-
-        // Soft delete de detalles y pagos
-        $this->softDeleteTransactionDetails();
-        $this->softDeleteTransactionPayments();
-
-        $this->updateOriginalTransactionAfterReturnCancellation();
-    }
-
-    private function validateCancellation(): void
-    {
-        if (!$this->canBeCancelled()) {
-            $reason = $this->getCancellationBlockReason();
-            throw new \InvalidArgumentException("No se puede cancelar: {$reason}");
-        }
-    }
-
-    private function cancelOriginalTransaction(): void
-    {
-        if ($this->isSale()) {
-            $this->releaseReservedStock();
-        }
-
-        if ($this->isPurchase()) {
-            $this->deleteRelatedEgress();
-        }
-    }
-
-
-
-
-    private function revertRefunds(): void
-    {
-        $refunds = $this->transactionPayments()->get();
-
-        foreach ($refunds as $refund) {
-            $refund->delete();
-        }
-
-        $this->amount_paid = 0;
-    }
-
-    private function updateOriginalTransactionAfterReturnCancellation(): void
-    {
-        if (!$this->relation_to) return;
-
-        $originalTransaction = Transaction::find($this->relation_to);
-        if ($originalTransaction) {
-            $originalTransaction->updatePaymentStatusAutomatically();
-            $originalTransaction->save();
-        }
-    }
-
-
-    public function hasActiveReturns(): bool
-    {
-        return $this->returns()
-            ->whereNotIn('delivery_status', [
-                self::DELIVERY_STATUS_CANCELLED
-            ])
-            ->whereNull('deleted_at') // ✅ EXCLUIR SOFT DELETED
-            ->exists();
-    }
-
-    public function getActiveReturns(): \Illuminate\Database\Eloquent\Collection
-    {
-        return $this->returns()
-            ->whereNotIn('delivery_status', [
-                self::DELIVERY_STATUS_CANCELLED
-            ])
-            ->whereNull('deleted_at') // ✅ EXCLUIR SOFT DELETED
-            ->with(['transactionDetails.product', 'transactionPayments.paymentMethod'])
-            ->get();
-    }
-
-    // ✅ NUEVO MÉTODO: OBTENER DEVOLUCIONES ANULADAS (SOFT DELETED)
-    public function getCancelledReturns(): \Illuminate\Database\Eloquent\Collection
-    {
-        return $this->hasMany(Transaction::class, 'relation_to')
-            ->withTrashed() // Incluir soft deleted
-            ->where('delivery_status', self::DELIVERY_STATUS_CANCELLED)
-            ->whereNotNull('deleted_at') // Solo las soft deleted
-            ->with(['transactionDetails.product', 'transactionPayments.paymentMethod'])
-            ->get();
-    }
-
-    // ✅ PAGOS
-    public function canReceivePayment(): bool
-    {
-        if ($this->isPaymentCancelled() || $this->isDeliveryCancelled()) {
-            return false;
-        }
-
-        if ($this->isFullyPaid()) {
-            return false;
-        }
-
-        return $this->isPaymentPending() || $this->isPartiallyPaid();
-    }
-
-    public function getRemainingAmount(): float
-    {
-        return max(0, $this->total - $this->amount_paid);
-    }
-
-    public function getFormattedRemainingAmount(): string
-    {
-        return "S/ " . number_format($this->getRemainingAmount(), 2);
-    }
-
-    public function canReceiveAmount(float $amount): bool
-    {
-        if (!$this->canReceivePayment()) {
-            return false;
-        }
-
-        return $amount <= $this->getRemainingAmount();
-    }
-
-    public function getPaymentProgress(): float
-    {
-        if ($this->total <= 0) return 0;
-        return round(($this->amount_paid / $this->total) * 100, 2);
-    }
-
-    public function isValidTransaction(): bool
-    {
-        return $this->total > 0 &&
-            $this->amount_paid >= 0 &&
-            $this->amount_paid <= $this->total &&
-            !$this->isDeliveryCancelled() &&
-            !$this->isPaymentCancelled();
-    }
-
-    private function revertStockMovement(): void
-    {
-        $transactionType = $this->transactionType?->code;
-
-        foreach ($this->transactionDetails as $detail) {
-            $product = Product::find($detail->product_id);
-            if (!$product) continue;
-
-            if ($transactionType === self::TYPE_SALE) {
-                $product->updateStock($detail->quantity, 'ADD');
-            } elseif ($transactionType === self::TYPE_PURCHASE) {
-                if ($product->hasStock($detail->quantity)) {
-                    $product->updateStock($detail->quantity, 'SUBTRACT');
-                }
-            }
-        }
-    }
-
-    // ✅ PRECIOS ORIGINALES
-    public function getOriginalPriceForProduct(int $productId): ?float
-    {
-        $detail = $this->transactionDetails()
-            ->where('product_id', $productId)
-            ->first();
-
-        return $detail ? (float) $detail->price : null;
-    }
-
-    public function getOriginalPrices(): array
-    {
-        return $this->transactionDetails()
-            ->get()
-            ->mapWithKeys(function ($detail) {
-                return [$detail->product_id => (float) $detail->price];
-            })
-            ->toArray();
-    }
-
-    public function validateReturnPrices(array $returnDetails): array
-    {
-        $errors = [];
-        $originalPrices = $this->getOriginalPrices();
-
-        foreach ($returnDetails as $index => $detail) {
-            $productId = $detail['product_id'] ?? null;
-            $sentPrice = (float) ($detail['price'] ?? 0);
-
-            if (!$productId) continue;
-
-            if (!isset($originalPrices[$productId])) {
-                $errors["details.{$index}.product_id"] = "El producto no se encuentra en la transacción original.";
-                continue;
-            }
-
-            $originalPrice = $originalPrices[$productId];
-            if (abs($sentPrice - $originalPrice) > 0.01) {
-                $errors["details.{$index}.price"] = "El precio debe ser el precio original: S/ {$originalPrice}. Precio enviado: S/ {$sentPrice}";
-            }
-        }
-
-        return $errors;
-    }
-
-    public function hasPaymentSurplus(): bool
-    {
-        return $this->getPaymentSurplus() > 0;
-    }
-
-    public function calculateReturnAmounts(float $returnAmount): array
-    {
-        $currentDebt = $this->getCurrentDebt();
-        $paymentSurplus = $this->getPaymentSurplus();
-
-        $refundAmount = 0;
-        $debtCompensation = 0;
-
-        if ($currentDebt > 0) {
-            $debtCompensation = min($returnAmount, $currentDebt);
-            $refundAmount = max(0, $returnAmount - $currentDebt);
-        } else {
-            $refundAmount = $returnAmount;
-        }
-
-        return [
-            'refund_amount' => (float) $refundAmount,
-            'debt_compensation' => (float) $debtCompensation,
-            'current_debt' => (float) $currentDebt,
-            'payment_surplus' => (float) $paymentSurplus,
-            'return_amount' => (float) $returnAmount
-        ];
-    }
-
-    // ✅ STATUS CHECKS
+    // MÉTODOS DE ESTADO
     public function isDeliveryPending(): bool
     {
         return $this->delivery_status === self::DELIVERY_STATUS_PENDING;
@@ -688,7 +183,27 @@ class Transaction extends Model
         return $this->payment_status === self::PAYMENT_STATUS_CANCELLED;
     }
 
-    // ✅ CAPABILITIES
+    public function isSale(): bool
+    {
+        return $this->transactionType?->code === self::TYPE_SALE;
+    }
+
+    public function isPurchase(): bool
+    {
+        return $this->transactionType?->code === self::TYPE_PURCHASE;
+    }
+
+    public function isReturn(): bool
+    {
+        return in_array($this->transactionType?->code, [self::TYPE_RETURN_SALE, self::TYPE_RETURN_PURCHASE]);
+    }
+
+    public function isOriginalTransaction(): bool
+    {
+        return is_null($this->relation_to) && in_array($this->transactionType?->code, [self::TYPE_SALE, self::TYPE_PURCHASE]);
+    }
+
+    // CAPACIDADES
     public function canBeEdited(): bool
     {
         return $this->isDeliveryPending() && !$this->isDeliveryCancelled();
@@ -699,110 +214,250 @@ class Transaction extends Model
         return $this->isDeliveryPending() && !$this->isDeliveryCancelled();
     }
 
-    public function isCompleted(): bool
+    public function canReceivePayment(): bool
     {
-        return $this->isDelivered() && $this->isFullyPaid();
-    }
+        if ($this->isPaymentCancelled() || $this->isDeliveryCancelled()) {
+            return false;
+        }
 
-    public function isPendingDelivery(): bool
-    {
-        return $this->isDeliveryPending();
-    }
+        if ($this->isFullyPaid()) {
+            return false;
+        }
 
-    public function isPendingPayment(): bool
-    {
         return $this->isPaymentPending() || $this->isPartiallyPaid();
     }
 
-    public function isActive(): bool
+    public function canBeReturned(): bool
     {
-        return !$this->isDeliveryCancelled() && !$this->isPaymentCancelled() && is_null($this->deleted_at);
+        if ($this->isReturn()) {
+            return false;
+        }
+
+        if ($this->isDeliveryCancelled() || $this->isPaymentCancelled()) {
+            return false;
+        }
+
+        if (!$this->isDelivered() && !$this->isDeliveryReturned()) {
+            return false;
+        }
+
+        if ($this->getRemainingReturnableAmount() <= 0.01) {
+            return false;
+        }
+
+        return true;
     }
 
-    // ✅ VALIDACIONES
-    public function hasValidStatus(): bool
-    {
-        $validDeliveryStatuses = [
-            self::DELIVERY_STATUS_PENDING,
-            self::DELIVERY_STATUS_DELIVERED,
-            self::DELIVERY_STATUS_RETURNED,
-            self::DELIVERY_STATUS_CANCELLED
-        ];
-
-        $validPaymentStatuses = [
-            self::PAYMENT_STATUS_PENDING,
-            self::PAYMENT_STATUS_PARTIAL,
-            self::PAYMENT_STATUS_PAID,
-            self::PAYMENT_STATUS_CANCELLED
-        ];
-
-        return in_array($this->delivery_status, $validDeliveryStatuses) &&
-            in_array($this->payment_status, $validPaymentStatuses);
-    }
-
-    public function canChangeStatusTo(string $newDeliveryStatus, string $newPaymentStatus = null): bool
+    public function canBeCancelled(): bool
     {
         if ($this->isDeliveryCancelled() || $this->isPaymentCancelled()) {
             return false;
         }
 
-        switch ($newDeliveryStatus) {
-            case self::DELIVERY_STATUS_DELIVERED:
-                return $this->isDeliveryPending();
+        if ($this->trashed()) {
+            return false;
+        }
 
-            case self::DELIVERY_STATUS_RETURNED:
-                return $this->isDelivered() || $this->isDeliveryPending();
+        return true;
+    }
 
-            case self::DELIVERY_STATUS_CANCELLED:
-                return !$this->isDelivered();
+    // REGLAS DE STOCK
+    public function applyStockRulesOnCreate(): void
+    {
+        $transactionType = $this->transactionType?->code;
 
-            default:
-                return true;
+        if ($transactionType === self::TYPE_SALE) {
+            if ($this->isDeliveryPending()) {
+                $this->applySaleCreationRule();
+            } elseif ($this->isDelivered()) {
+                $this->applySaleCreationRule();
+                $this->applySaleDeliveryRule();
+            }
+        } elseif ($transactionType === self::TYPE_PURCHASE) {
+            if ($this->isDelivered()) {
+                $this->applyPurchaseDeliveryRule();
+            }
+        } elseif ($transactionType === self::TYPE_RETURN_SALE) {
+            $this->applySaleReturnRule();
+        } elseif ($transactionType === self::TYPE_RETURN_PURCHASE) {
+            $this->applyPurchaseReturnRule();
         }
     }
 
-    // ✅ SCOPES ADICIONALES
-    public function scopePendingDelivery(Builder $query): Builder
+    // REGLA: VENTA NUEVA - reserved_stock += cantidad
+    public function applySaleCreationRule(): void
     {
-        return $query->where('delivery_status', self::DELIVERY_STATUS_PENDING);
+        foreach ($this->transactionDetails as $detail) {
+            $product = $detail->product;
+            if (!$product) continue;
+
+            $product->reserveStock($detail->quantity);
+        }
     }
 
-    public function scopeDelivered(Builder $query): Builder
+    // REGLA: VENTA ENTREGA - reserved_stock -= cantidad, stock -= cantidad
+    public function applySaleDeliveryRule(): void
     {
-        return $query->where('delivery_status', self::DELIVERY_STATUS_DELIVERED);
+        foreach ($this->transactionDetails as $detail) {
+            $product = $detail->product;
+            if (!$product) continue;
+
+            $product->confirmSaleDelivery($detail->quantity);
+        }
     }
 
-    public function scopeReturned(Builder $query): Builder
+    // REGLA: COMPRA ENTREGA - stock += cantidad
+    public function applyPurchaseDeliveryRule(): void
     {
-        return $query->where('delivery_status', self::DELIVERY_STATUS_RETURNED);
+        foreach ($this->transactionDetails as $detail) {
+            $product = $detail->product;
+            if (!$product) continue;
+
+            $product->processPurchase($detail->quantity);
+        }
     }
 
-    public function scopeCancelled(Builder $query): Builder
+    // REGLA: VENTA DEVOLUCIÓN - stock += cantidad
+    public function applySaleReturnRule(): void
     {
-        return $query->where('delivery_status', self::DELIVERY_STATUS_CANCELLED);
+        foreach ($this->transactionDetails as $detail) {
+            $product = $detail->product;
+            if (!$product) continue;
+
+            $quantity = abs($detail->quantity);
+            $product->processSaleReturn($quantity);
+        }
     }
 
-    public function scopePendingPayment(Builder $query): Builder
+    // REGLA: COMPRA DEVOLUCIÓN - stock -= cantidad
+    public function applyPurchaseReturnRule(): void
     {
-        return $query->whereIn('payment_status', [
-            self::PAYMENT_STATUS_PENDING,
-            self::PAYMENT_STATUS_PARTIAL
-        ]);
+        foreach ($this->transactionDetails as $detail) {
+            $product = $detail->product;
+            if (!$product) continue;
+
+            $quantity = abs($detail->quantity);
+            $product->cancelPurchase($quantity);
+        }
     }
 
-    public function scopeFullyPaid(Builder $query): Builder
+    // MÉTODO PÚBLICO PARA CANCELACIÓN
+    public function applyStockRulesOnCancel(): void
     {
-        return $query->where('payment_status', self::PAYMENT_STATUS_PAID);
+        if ($this->isReturn()) {
+            $this->revertReturnEffects();
+        } else {
+            $transactionType = $this->transactionType?->code;
+            
+            if ($transactionType === self::TYPE_SALE) {
+                $this->applySaleCancellationRule();
+            } elseif ($transactionType === self::TYPE_PURCHASE) {
+                $this->applyPurchaseCancellationRule();
+            }
+        }
     }
 
-    public function scopeCompleted(Builder $query): Builder
+    // REGLA: CANCELACIÓN DE VENTA - reserved_stock -= cantidad
+    public function applySaleCancellationRule(): void
     {
-        return $query->where('delivery_status', self::DELIVERY_STATUS_DELIVERED)
-            ->where('payment_status', self::PAYMENT_STATUS_PAID);
+        foreach ($this->transactionDetails as $detail) {
+            $product = $detail->product;
+            if (!$product) continue;
+
+            if ($this->isDelivered()) {
+                $product->processSaleReturn($detail->quantity);
+            } else {
+                $product->releaseReservedStock($detail->quantity);
+            }
+        }
     }
 
-    // ✅ AGREGAR ESTE MÉTODO DESPUÉS DE LOS BOOT EVENTS
-    // ✅ GENERAR CÓDIGO
+    // REGLA: CANCELAR COMPRA
+    public function applyPurchaseCancellationRule(): void
+    {
+        if ($this->isDelivered()) {
+            foreach ($this->transactionDetails as $detail) {
+                $product = $detail->product;
+                if (!$product) continue;
+
+                $product->cancelPurchase($detail->quantity);
+            }
+        }
+    }
+
+    // MÉTODO PRIVADO PARA CANCELAR EGRESO DE COMPRA
+    private function cancelPurchaseEgress(): void
+    {
+        try {
+            $egress = Egress::where('transaction_id', $this->id)->first();
+            
+            if ($egress) {
+                $egress->delete();
+            }
+        } catch (\Exception $e) {
+            // Continuar sin bloquear la cancelación
+        }
+    }
+
+    // MÉTODO PÚBLICO: MARCAR COMO ENTREGADO
+    public function markAsDelivered(): void
+    {
+        DB::transaction(function () {
+            $transactionType = $this->transactionType?->code;
+            
+            if ($transactionType === self::TYPE_SALE && $this->isDeliveryPending()) {
+                $this->applySaleDeliveryRule();
+            } elseif ($transactionType === self::TYPE_PURCHASE && $this->isDeliveryPending()) {
+                $this->applyPurchaseDeliveryRule();
+            }
+
+            $this->delivery_status = self::DELIVERY_STATUS_DELIVERED;
+            $this->save();
+        });
+    }
+
+    // ACTUALIZAR RESERVAS AL EDITAR VENTA PENDIENTE
+    public function updateSaleReservations(array $oldDetails, array $newDetails): void
+    {
+        if (!$this->isSale() || !$this->isDeliveryPending()) {
+            return;
+        }
+
+        foreach ($oldDetails as $oldDetail) {
+            $product = Product::find($oldDetail['product_id']);
+            if (!$product) continue;
+
+            $product->releaseReservedStock($oldDetail['quantity']);
+        }
+
+        foreach ($newDetails as $newDetail) {
+            $product = Product::find($newDetail['product_id']);
+            if (!$product) continue;
+
+            $product->reserveStock($newDetail['quantity']);
+        }
+    }
+
+    // MÉTODOS HELPER
+    public function getActiveReturns()
+    {
+        return $this->returns()
+            ->whereNot('delivery_status', self::DELIVERY_STATUS_CANCELLED)
+            ->whereNot('payment_status', self::PAYMENT_STATUS_CANCELLED)
+            ->whereNull('deleted_at');
+    }
+
+    public function hasActiveReturns(): bool
+    {
+        return $this->getActiveReturns()->exists();
+    }
+
+    public function getActiveReturnsCount(): int
+    {
+        return $this->getActiveReturns()->count();
+    }
+
+    // GENERAR CÓDIGO
     public function generateCode(): string
     {
         $typeCode = $this->transactionType?->code ?? 'TXN';
@@ -816,7 +471,8 @@ class Transaction extends Model
         };
 
         $date = now()->format('dmy');
-        $sequential = static::whereDate('created_at', now())
+        $sequential = static::withTrashed()
+            ->whereDate('created_at', now())
             ->whereHas('transactionType', function ($q) use ($typeCode) {
                 $q->where('code', $typeCode);
             })
@@ -825,7 +481,7 @@ class Transaction extends Model
         return "{$prefix}-{$date}-" . str_pad($sequential, 3, '0', STR_PAD_LEFT);
     }
 
-    // ✅ PAYMENT STATUS
+    // PAYMENT STATUS
     public function updatePaymentStatusAutomatically(): void
     {
         if ($this->isPaymentCancelled()) {
@@ -837,9 +493,7 @@ class Transaction extends Model
         if ($this->payment_status !== $newStatus) {
             $this->payment_status = $newStatus;
 
-            if (!$this->exists) {
-                // Durante creación
-            } else {
+            if ($this->exists) {
                 static::withoutEvents(function () use ($newStatus) {
                     $this->update(['payment_status' => $newStatus]);
                 });
@@ -871,7 +525,98 @@ class Transaction extends Model
         return self::PAYMENT_STATUS_PARTIAL;
     }
 
-    // ✅ MÉTODO HELPER PARA getCurrentDebt() Y getPaymentSurplus()
+    // CÁLCULOS DE DEUDA
+    public function calculateDebtInfo(): array
+    {
+        if ($this->isReturn()) {
+            return $this->calculateReturnDebtInfo();
+        }
+
+        $originalTotal = (float) $this->total;
+        $totalPaid = (float) $this->amount_paid;
+        $totalReturned = $this->getTotalReturnedAmount();
+        $totalRefunded = $this->getTotalRefundedAmount();
+        
+        $netTotal = $originalTotal - $totalReturned;
+        $netPaid = $totalPaid - $totalRefunded;
+        
+        $currentDebt = max(0, $netTotal - $netPaid);
+        $paymentSurplus = max(0, $netPaid - $netTotal);
+        
+        return [
+            'original_total' => $originalTotal,
+            'total_paid' => $totalPaid,
+            'total_returned' => $totalReturned,
+            'total_refunded' => $totalRefunded,
+            'net_total' => $netTotal,
+            'net_paid' => $netPaid,
+            'current_debt' => $currentDebt,
+            'payment_surplus' => $paymentSurplus,
+        ];
+    }
+
+    private function calculateReturnDebtInfo(): array
+    {
+        $returnAmount = abs((float) $this->total);
+        $refundAmount = (float) $this->amount_paid;
+        
+        $currentDebt = max(0, $returnAmount - $refundAmount);
+        $paymentSurplus = max(0, $refundAmount - $returnAmount);
+        
+        return [
+            'original_total' => 0.0,
+            'total_paid' => 0.0,
+            'total_returned' => $returnAmount,
+            'total_refunded' => $refundAmount,
+            'net_total' => $returnAmount,
+            'net_paid' => $refundAmount,
+            'current_debt' => $currentDebt,
+            'payment_surplus' => $paymentSurplus,
+        ];
+    }
+
+    public function getTotalReturnedAmount(): float
+    {
+        if ($this->isReturn()) {
+            return 0.0;
+        }
+
+        return $this->returns()
+            ->whereNotIn('delivery_status', [self::DELIVERY_STATUS_CANCELLED])
+            ->whereNull('deleted_at')
+            ->get()
+            ->sum(function ($return) {
+                return abs((float) $return->total);
+            });
+    }
+
+    public function getTotalRefundedAmount(): float
+    {
+        if ($this->isReturn()) {
+            return (float) $this->amount_paid;
+        }
+
+        return $this->returns()
+            ->whereNotIn('delivery_status', [self::DELIVERY_STATUS_CANCELLED])
+            ->whereNull('deleted_at')
+            ->get()
+            ->sum(function ($return) {
+                return (float) $return->amount_paid;
+            });
+    }
+
+    public function getRemainingReturnableAmount(): float
+    {
+        if ($this->isReturn()) {
+            return 0.0;
+        }
+
+        $originalTotal = (float) $this->total;
+        $totalReturned = $this->getTotalReturnedAmount();
+        
+        return max(0, $originalTotal - $totalReturned);
+    }
+
     public function getCurrentDebt(): float
     {
         return $this->calculateDebtInfo()['current_debt'];
@@ -882,256 +627,21 @@ class Transaction extends Model
         return $this->calculateDebtInfo()['payment_surplus'];
     }
 
-    // ✅ MARK AS RETURNED
-    public function markAsReturned(): void
+    public function getOriginalPrices(): array
     {
-        DB::transaction(function () {
-            $this->delivery_status = self::DELIVERY_STATUS_RETURNED;
-
-            if ($this->isReturn()) {
-                $this->payment_status = self::PAYMENT_STATUS_PAID;
-            }
-
-            $this->save();
-
-            if ($this->isReturn() && $this->relation_to) {
-                $originalTransaction = Transaction::find($this->relation_to);
-                if ($originalTransaction) {
-                    $originalTransaction->updatePaymentStatusAutomatically();
-                    $originalTransaction->save();
-                }
-            }
-        });
+        return $this->transactionDetails()
+            ->get()
+            ->mapWithKeys(function ($detail) {
+                return [$detail->product_id => [
+                    'price' => (float) $detail->price,
+                    'quantity' => (float) $detail->quantity,
+                    'product_name' => $detail->product?->name ?? 'Producto no encontrado'
+                ]];
+            })
+            ->toArray();
     }
 
-    // ✅ MÉTODO HELPER PARA ELIMINAR EGRESO RELACIONADO
-    private function deleteRelatedEgress(): void
-    {
-        $egress = Egress::where('transaction_id', $this->id)->first();
-
-        if ($egress) {
-            $egress->delete();
-        }
-    }
-
-    // ✅ AGREGAR ESTAS RELACIONES DESPUÉS DE protected $attributes
-    // ✅ RELACIONES FALTANTES
-    public function agent(): BelongsTo
-    {
-        return $this->belongsTo(Agent::class);
-    }
-
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(User::class);
-    }
-
-    public function zone(): BelongsTo
-    {
-        return $this->belongsTo(Zone::class);
-    }
-
-    public function transactionType(): BelongsTo
-    {
-        return $this->belongsTo(TransactionType::class);
-    }
-
-    public function trip(): BelongsTo
-    {
-        return $this->belongsTo(Trip::class);
-    }
-
-    public function transactionDetails(): HasMany
-    {
-        return $this->hasMany(TransactionDetail::class);
-    }
-
-    public function transactionPayments(): HasMany
-    {
-        return $this->hasMany(TransactionPayment::class);
-    }
-
-    // ✅ RELACIONES PARA DEVOLUCIONES
-    public function originalTransaction(): BelongsTo
-    {
-        return $this->belongsTo(Transaction::class, 'relation_to');
-    }
-
-    public function returns(): HasMany
-    {
-        return $this->hasMany(Transaction::class, 'relation_to');
-    }
-
-    // ✅ MÉTODOS HELPER PARA TIPOS DE TRANSACCIÓN
-    public function isSale(): bool
-    {
-        return $this->transactionType?->code === self::TYPE_SALE;
-    }
-
-    public function isPurchase(): bool
-    {
-        return $this->transactionType?->code === self::TYPE_PURCHASE;
-    }
-
-    public function isReturn(): bool
-    {
-        return in_array($this->transactionType?->code, [self::TYPE_RETURN_SALE, self::TYPE_RETURN_PURCHASE]);
-    }
-
-    public function isOriginalTransaction(): bool
-    {
-        return is_null($this->relation_to) && in_array($this->transactionType?->code, [self::TYPE_SALE, self::TYPE_PURCHASE]);
-    }
-
-    public function canBeCancelled(): bool
-    {
-        // No se puede cancelar si ya está cancelada
-        if ($this->isDeliveryCancelled() || $this->isPaymentCancelled()) {
-            return false;
-        }
-
-        // No se puede cancelar si está soft deleted
-        if (!is_null($this->deleted_at)) {
-            return false;
-        }
-
-        return true;
-    }
-
-    public function getCancellationBlockReason(): string
-    {
-        if ($this->isDeliveryCancelled()) {
-            return "La transacción ya está cancelada";
-        }
-
-        if ($this->isPaymentCancelled()) {
-            return "Los pagos ya están cancelados";
-        }
-
-        if (!is_null($this->deleted_at)) {
-            return "La transacción ya fue eliminada";
-        }
-
-        return "Estado de la transacción no válido";
-    }
-
-    public function canBeReturned(): bool
-    {
-        // Solo transacciones originales pueden tener devoluciones
-        if (!$this->isOriginalTransaction()) {
-            return false;
-        }
-
-        // No se puede devolver si está cancelada
-        if ($this->isDeliveryCancelled() || $this->isPaymentCancelled()) {
-            return false;
-        }
-
-        // Para ventas: debe estar entregada para poder devolver
-        if ($this->isSale()) {
-            return $this->isDelivered();
-        }
-
-        // Para compras: puede estar entregada o pending
-        if ($this->isPurchase()) {
-            return $this->isDelivered() || $this->isDeliveryPending();
-        }
-
-        return false;
-    }
-
-    // ✅ MÉTODO PARA CALCULAR INFORMACIÓN DE DEUDA
-    public function calculateDebtInfo(): array
-    {
-        if ($this->isReturn()) {
-            // Para devoluciones, no calcular deuda propia
-            return [
-                'current_debt' => 0.0,
-                'payment_surplus' => 0.0,
-                'net_total' => abs((float) $this->total),
-                'total_returned' => 0.0,
-                'total_refunded' => abs($this->transactionPayments->sum('amount_paid'))
-            ];
-        }
-
-        // Para transacciones originales
-        $originalTotal = (float) $this->total;
-        $originalPaid = (float) $this->amount_paid;
-
-        // Calcular total devuelto (solo devoluciones activas)
-        $totalReturned = $this->returns()
-            ->whereNotIn('delivery_status', [self::DELIVERY_STATUS_CANCELLED])
-            ->whereNull('deleted_at')
-            ->sum('total');
-        $totalReturned = abs($totalReturned); // Convertir a positivo
-
-        // Calcular total reembolsado
-        $totalRefunded = 0;
-        foreach ($this->returns()->whereNotIn('delivery_status', [self::DELIVERY_STATUS_CANCELLED])->whereNull('deleted_at')->get() as $return) {
-            $totalRefunded += $return->transactionPayments->sum('amount_paid');
-        }
-
-        // Net total después de devoluciones
-        $netTotal = $originalTotal - $totalReturned;
-
-        // Calcular deuda actual
-        $currentDebt = max(0, $netTotal - $originalPaid);
-
-        // Calcular superávit
-        $paymentSurplus = max(0, $originalPaid - $netTotal);
-
-        return [
-            'current_debt' => (float) $currentDebt,
-            'payment_surplus' => (float) $paymentSurplus,
-            'net_total' => (float) $netTotal,
-            'total_returned' => (float) $totalReturned,
-            'total_refunded' => (float) $totalRefunded
-        ];
-    }
-
-    // ✅ MÉTODOS PARA OBTENER TOTALES
-    public function getTotalReturnedAmount(): float
-    {
-        return abs($this->returns()
-            ->whereNotIn('delivery_status', [self::DELIVERY_STATUS_CANCELLED])
-            ->whereNull('deleted_at')
-            ->sum('total'));
-    }
-
-    public function getRemainingReturnableAmount(): float
-    {
-        if (!$this->canBeReturned()) {
-            return 0;
-        }
-
-        $totalReturned = $this->getTotalReturnedAmount();
-        return max(0, $this->total - $totalReturned);
-    }
-
-    // ✅ MÉTODO PARA CANCELAR TRANSACCIÓN ORIGINAL CON CASCADA
-    private function cancelOriginalTransactionWithCascade(): void
-    {
-        // ✅ 1. ANULAR TODAS LAS DEVOLUCIONES RELACIONADAS PRIMERO
-        $this->cancelAllRelatedReturns();
-
-        // ✅ 2. APLICAR REGLAS DE CANCELACIÓN SEGÚN TIPO Y ESTADO
-        if ($this->isSale()) {
-            $this->applySaleCancellationRule();
-        } elseif ($this->isPurchase()) {
-            $this->applyPurchaseCancellationRule();
-        }
-
-        // ✅ 3. ELIMINAR EGRESO SI ES COMPRA
-        if ($this->isPurchase()) {
-            $this->deleteRelatedEgress();
-        }
-
-        // ✅ 4. SOFT DELETE DE DETALLES Y PAGOS
-        $this->softDeleteTransactionDetails();
-        $this->softDeleteTransactionPayments();
-    }
-
-    // ✅ SCOPES FALTANTES
+    // SCOPES
     public function scopeActive(Builder $query): Builder
     {
         return $query->whereNull('deleted_at');
@@ -1161,141 +671,92 @@ class Transaction extends Model
         });
     }
 
-    public function scopeReturnSales(Builder $query): Builder
+    // REVERTIR EFECTOS DE DEVOLUCIÓN
+    public function revertReturnEffects(): void
     {
-        return $query->byType(self::TYPE_RETURN_SALE);
-    }
-
-    public function scopeReturnPurchases(Builder $query): Builder
-    {
-        return $query->byType(self::TYPE_RETURN_PURCHASE);
-    }
-
-    public function scopeWithReturns(Builder $query): Builder
-    {
-        return $query->has('returns');
-    }
-
-    public function scopeOriginalTransactions(Builder $query): Builder
-    {
-        return $query->whereNull('relation_to')
-            ->whereHas('transactionType', function ($q) {
-                $q->whereIn('code', [self::TYPE_SALE, self::TYPE_PURCHASE]);
-            });
-    }
-
-    public function scopeRelatedTo(Builder $query, int $transactionId): Builder
-    {
-        return $query->where('relation_to', $transactionId);
-    }
-
-    // ✅ AGREGAR ESTE MÉTODO DESPUÉS DE applySaleReturnRule()
-    // ✅ REGLA 1: RESERVAR STOCK PARA VENTAS NUEVAS (MÉTODO PÚBLICO)
-    public function reserveStockForSale(): void
-    {
-        if (!$this->isSale() || !$this->isDeliveryPending()) {
-            return;
-        }
-
+        $returnType = $this->transactionType?->code;
+        
         foreach ($this->transactionDetails as $detail) {
             $product = $detail->product;
             if (!$product) continue;
 
-            // ✅ REGLA 1: reserved_stock += cantidad (stock no cambia)
-            $product->reserveStock($detail->quantity);
-            
-            \Log::info('Stock reserved for new sale', [
-                'transaction_id' => $this->id,
-                'product_id' => $product->id,
-                'quantity_reserved' => $detail->quantity,
-                'stock_after' => $product->fresh()->stock,
-                'reserved_after' => $product->fresh()->reserved_stock
-            ]);
-        }
-    }
+            $quantity = abs($detail->quantity);
 
-    // ✅ MÉTODO CORREGIDO: PROCESAR STOCK AL ENTREGAR (REGLA 3)
-    private function processStockMovementOnDelivery(): void
-    {
-        $transactionType = $this->transactionType?->code;
-
-        foreach ($this->transactionDetails as $detail) {
-            $product = $detail->product;
-            if (!$product) continue;
-
-            switch ($transactionType) {
-                case self::TYPE_SALE:
-                    // ✅ REGLA 3: reserved_stock -= cantidad, stock -= cantidad
-                    $product->confirmSaleDelivery($detail->quantity);
-                    
-                    \Log::info('Sale delivery confirmed', [
-                        'transaction_id' => $this->id,
-                        'product_id' => $product->id,
-                        'quantity_delivered' => $detail->quantity,
-                        'stock_after' => $product->fresh()->stock,
-                        'reserved_after' => $product->fresh()->reserved_stock
-                    ]);
-                    break;
-
-                case self::TYPE_PURCHASE:
-                    // ✅ REGLA 6: stock += cantidad (reserved_stock no se toca)
-                    $product->processPurchase($detail->quantity);
-                    
-                    \Log::info('Purchase processed', [
-                        'transaction_id' => $this->id,
-                        'product_id' => $product->id,
-                        'quantity_purchased' => $detail->quantity,
-                        'stock_after' => $product->fresh()->stock
-                    ]);
-                    break;
-
-                case self::TYPE_RETURN_SALE:
-                    // ✅ REGLA 4A: stock += cantidad (ya fue entregado)
-                    $product->processSaleReturn($detail->quantity, true);
-                    
-                    \Log::info('Sale return processed (was delivered)', [
-                        'transaction_id' => $this->id,
-                        'product_id' => $product->id,
-                        'quantity_returned' => $detail->quantity,
-                        'stock_after' => $product->fresh()->stock
-                    ]);
-                    break;
-
-                case self::TYPE_RETURN_PURCHASE:
-                    // ✅ REGLA 7: stock -= cantidad (devolver compra)
-                    $product->cancelPurchase($detail->quantity);
-                    
-                    \Log::info('Purchase return processed', [
-                        'transaction_id' => $this->id,
-                        'product_id' => $product->id,
-                        'quantity_returned' => $detail->quantity,
-                        'stock_after' => $product->fresh()->stock
-                    ]);
-                    break;
+            if ($returnType === self::TYPE_RETURN_SALE) {
+                $product->cancelPurchase($quantity);
+            } elseif ($returnType === self::TYPE_RETURN_PURCHASE) {
+                $product->processPurchase($quantity);
             }
         }
+        
+        $this->revertRefunds();
     }
 
-    // ✅ MÉTODO PÚBLICO PARA MARCAR COMO ENTREGADO
-    public function markAsDelivered(): void
+    // REVERTIR REEMBOLSOS
+    public function revertRefunds(): void
+    {
+        try {
+            $refunds = $this->transactionPayments;
+            
+            if ($refunds->count() > 0) {
+                foreach ($refunds as $refund) {
+                    $refund->delete();
+                }
+            }
+        } catch (\Exception $e) {
+            // Continuar sin bloquear la cancelación
+        }
+    }
+
+    // CANCELACIÓN UNIFICADA
+    public function cancelTransaction(): void
     {
         DB::transaction(function () {
-            if (!$this->canBeDelivered()) {
-                throw new \InvalidArgumentException('Esta transacción no puede ser marcada como entregada');
-            }
+            try {
+                if (!$this->canBeCancelled()) {
+                    throw new \InvalidArgumentException('Esta transacción no puede ser cancelada en su estado actual');
+                }
 
-            $this->delivery_status = self::DELIVERY_STATUS_DELIVERED;
-            
-            // ✅ PROCESAR STOCK AL ENTREGAR
-            $this->processStockMovementOnDelivery();
-            
-            $this->save();
-            
-            \Log::info('Transaction marked as delivered', [
-                'transaction_id' => $this->id,
-                'transaction_code' => $this->code,
-                'transaction_type' => $this->transactionType?->code
-            ]);
+                // CANCELAR DEVOLUCIONES ACTIVAS EN CASCADA
+                if (!$this->isReturn() && $this->hasActiveReturns()) {
+                    $activeReturns = $this->getActiveReturns()->get();
+
+                    foreach ($activeReturns as $returnTransaction) {
+                        $returnTransaction->load(['transactionDetails.product', 'transactionType']);
+                        $returnTransaction->applyStockRulesOnCancel();
+                        
+                        $returnTransaction->delivery_status = self::DELIVERY_STATUS_CANCELLED;
+                        $returnTransaction->payment_status = self::PAYMENT_STATUS_CANCELLED;
+                        $returnTransaction->save();
+                    }
+                }
+
+                // APLICAR REGLAS DE STOCK
+                if (!$this->relationLoaded('transactionDetails')) {
+                    $this->load(['transactionDetails.product', 'transactionType']);
+                }
+                
+                $this->applyStockRulesOnCancel();
+
+                // CANCELAR EGRESO SI ES COMPRA
+                if ($this->isPurchase()) {
+                    $this->cancelPurchaseEgress();
+                }
+
+                // MARCAR COMO CANCELADA
+                $this->delivery_status = self::DELIVERY_STATUS_CANCELLED;
+                $this->payment_status = self::PAYMENT_STATUS_CANCELLED;
+                $this->save();
+
+                // ACTUALIZAR TRANSACCIÓN ORIGINAL SI ES DEVOLUCIÓN
+                if ($this->isReturn() && $this->originalTransaction) {
+                    $this->originalTransaction->updatePaymentStatusAutomatically();
+                    $this->originalTransaction->save();
+                }
+
+            } catch (\Exception $e) {
+                throw $e;
+            }
         });
     }
 }
