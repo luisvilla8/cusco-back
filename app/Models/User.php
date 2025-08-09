@@ -135,7 +135,7 @@ class User extends Authenticatable
             }
         });
 
-        // ✅ EVENTO: ANTES DE SOFT DELETE
+        //  EVENTO: ANTES DE SOFT DELETE
         static::deleting(function ($user) {
             Log::info('User being soft deleted', [
                 'user_id' => $user->id,
@@ -146,7 +146,7 @@ class User extends Authenticatable
             // Revocar todos los tokens al eliminar
             $user->tokens()->delete();
 
-            // ✅ Si es SOFT DELETE, hacer soft delete de UserZones
+            //  Si es SOFT DELETE, hacer soft delete de UserZones
             if (!$user->isForceDeleting()) {
                 // Soft delete de todas las asignaciones de zonas activas
                 UserZone::where('user_id', $user->id)
@@ -160,14 +160,14 @@ class User extends Authenticatable
             }
         });
 
-        // ✅ EVENTO: ANTES DE FORCE DELETE
+        //  EVENTO: ANTES DE FORCE DELETE
         static::forceDeleting(function ($user) {
             Log::info('User being force deleted', [
                 'user_id' => $user->id,
                 'user_name' => $user->name
             ]);
 
-            // ✅ FORCE DELETE de todas las UserZones (incluidas soft deleted)
+            //  FORCE DELETE de todas las UserZones (incluidas soft deleted)
             UserZone::withTrashed()
                 ->where('user_id', $user->id)
                 ->forceDelete();
@@ -177,14 +177,14 @@ class User extends Authenticatable
             ]);
         });
 
-        // ✅ EVENTO: AL RESTAURAR USUARIO
+        //  EVENTO: AL RESTAURAR USUARIO
         static::restoring(function ($user) {
             Log::info('User being restored', [
                 'user_id' => $user->id,
                 'user_name' => $user->name
             ]);
 
-            // ✅ RESTAURAR UserZones que fueron eliminadas junto con el usuario
+            //  RESTAURAR UserZones que fueron eliminadas junto con el usuario
             // Solo restaurar las que fueron eliminadas el mismo día o después
             $userDeletedAt = $user->deleted_at;
             
@@ -273,17 +273,17 @@ class User extends Authenticatable
     }
 
     /**
-     * ✅ NUEVA RELACIÓN: Zonas a través de tabla intermedia
+     *  NUEVA RELACIÓN: Zonas a través de tabla intermedia
      */
     public function zones(): BelongsToMany
     {
         return $this->belongsToMany(Zone::class, 'user_zones')
-                    ->whereNull('user_zones.deleted_at') // ✅ IMPORTANTE: Solo activas
+                    ->whereNull('user_zones.deleted_at') //  IMPORTANTE: Solo activas
                     ->withTimestamps();
     }
 
     /**
-     * ✅ RELACIÓN: UserZones activas
+     *  RELACIÓN: UserZones activas
      */
     public function userZones(): HasMany
     {
@@ -291,7 +291,7 @@ class User extends Authenticatable
     }
 
     /**
-     * ✅ RELACIÓN: TODAS las UserZones (incluidas eliminadas)
+     *  RELACIÓN: TODAS las UserZones (incluidas eliminadas)
      */
     public function allUserZones(): HasMany
     {
@@ -299,7 +299,7 @@ class User extends Authenticatable
     }
 
     /**
-     * ✅ HELPER: Obtener primera zona (para compatibilidad)
+     *  HELPER: Obtener primera zona (para compatibilidad)
      */
     public function getPrimaryZoneAttribute(): ?Zone
     {
@@ -307,7 +307,7 @@ class User extends Authenticatable
     }
 
     /**
-     * ✅ HELPER: Obtener nombre de primera zona
+     *  HELPER: Obtener nombre de primera zona
      */
     public function getPrimaryZoneNameAttribute(): ?string
     {
@@ -319,7 +319,7 @@ class User extends Authenticatable
      */
     public function hasRole(string $roleName): bool
     {
-        // ✅ CARGAR RELACIÓN SI NO ESTÁ CARGADA
+        //  CARGAR RELACIÓN SI NO ESTÁ CARGADA
         if (!$this->relationLoaded('role')) {
             $this->load('role');
         }
@@ -328,7 +328,7 @@ class User extends Authenticatable
     }
 
     /**
-     * ✅ VERIFICAR SI EL USUARIO TIENE ALGUNO DE LOS ROLES - CORREGIDO
+     *  VERIFICAR SI EL USUARIO TIENE ALGUNO DE LOS ROLES - CORREGIDO
      */
     public function hasAnyRole(array $roles): bool
     {
@@ -337,7 +337,7 @@ class User extends Authenticatable
             return false;
         }
         
-        // ✅ CARGAR RELACIÓN SI NO ESTÁ CARGADA
+        //  CARGAR RELACIÓN SI NO ESTÁ CARGADA
         if (!$this->relationLoaded('role')) {
             $this->load('role');
         }
@@ -347,7 +347,7 @@ class User extends Authenticatable
     }
 
     /**
-     * ✅ MÉTODO AUXILIAR: Obtener nombre del rol
+     *  MÉTODO AUXILIAR: Obtener nombre del rol
      */
     public function getRoleName(): ?string
     {
@@ -358,7 +358,7 @@ class User extends Authenticatable
     }
 
     /**
-     * ✅ MÉTODO AUXILIAR: Verificar si es administrador
+     *  MÉTODO AUXILIAR: Verificar si es administrador
      */
     public function isAdmin(): bool
     {
@@ -366,7 +366,7 @@ class User extends Authenticatable
     }
 
     /**
-     * ✅ MÉTODO AUXILIAR: Verificar si es vendedor
+     *  MÉTODO AUXILIAR: Verificar si es vendedor
      */
     public function isVendedor(): bool
     {
@@ -374,7 +374,7 @@ class User extends Authenticatable
     }
 
     /**
-     * ✅ VERIFICAR SI EL USUARIO TIENE ACCESO A UNA ZONA
+     *  VERIFICAR SI EL USUARIO TIENE ACCESO A UNA ZONA
      */
     public function hasZone(int $zoneId): bool
     {
@@ -382,7 +382,7 @@ class User extends Authenticatable
     }
 
     /**
-     * ✅ ASIGNAR zona al usuario
+     *  ASIGNAR zona al usuario
      */
     public function assignToZone(int $zoneId): bool
     {
@@ -399,7 +399,7 @@ class User extends Authenticatable
     }
 
     /**
-     * ✅ QUITAR zona del usuario
+     *  QUITAR zona del usuario
      */
     public function removeFromZone(int $zoneId): bool
     {
@@ -455,7 +455,7 @@ class User extends Authenticatable
     }
 
     /**
-     * ✅ HELPER: Verificar si el usuario está siendo force deleted
+     *  HELPER: Verificar si el usuario está siendo force deleted
      */
     public function isForceDeleting(): bool
     {
@@ -463,7 +463,7 @@ class User extends Authenticatable
     }
 
     /**
-     * ✅ NUEVA RELACIÓN: Trips creados por el usuario
+     *  NUEVA RELACIÓN: Trips creados por el usuario
      */
     public function trips(): HasMany
     {
@@ -471,7 +471,7 @@ class User extends Authenticatable
     }
 
     /**
-     * ✅ NUEVA RELACIÓN: Trips activos del usuario
+     *  NUEVA RELACIÓN: Trips activos del usuario
      */
     public function activeTrips(): HasMany
     {
@@ -479,7 +479,7 @@ class User extends Authenticatable
     }
 
     /**
-     * ✅ SCOPE: Usuarios con roles específicos
+     *  SCOPE: Usuarios con roles específicos
      */
     public function scopeWithRoles($query, array $roleNames)
     {
@@ -489,7 +489,7 @@ class User extends Authenticatable
     }
 
     /**
-     * ✅ SCOPE: Cargar con relaciones comunes
+     *  SCOPE: Cargar con relaciones comunes
      */
     public function scopeWithCommonRelations($query)
     {
@@ -497,7 +497,7 @@ class User extends Authenticatable
     }
 
     /**
-     * ✅ MÉTODO AUXILIAR: Información de usuario para logging
+     *  MÉTODO AUXILIAR: Información de usuario para logging
      */
     public function getLoggingInfo(): array
     {
@@ -511,7 +511,7 @@ class User extends Authenticatable
     }
 
     /**
-     * ✅ MÉTODO AUXILIAR: Verificar si puede asignar trips a otros usuarios
+     *  MÉTODO AUXILIAR: Verificar si puede asignar trips a otros usuarios
      */
     public function canAssignTripsToOthers(): bool
     {
@@ -519,7 +519,7 @@ class User extends Authenticatable
     }
 
     /**
-     * ✅ MÉTODO AUXILIAR: Verificar si solo puede crear trips para sí mismo
+     *  MÉTODO AUXILIAR: Verificar si solo puede crear trips para sí mismo
      */
     public function canOnlyCreateOwnTrips(): bool
     {

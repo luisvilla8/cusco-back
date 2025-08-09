@@ -47,7 +47,7 @@ class AuthService
     }
 
     /**
-     * ✅ AUTO-REGISTRO: Para usuarios que se registran a sí mismos
+     *  AUTO-REGISTRO: Para usuarios que se registran a sí mismos
      */
     public function register(array $data): array
     {
@@ -56,7 +56,7 @@ class AuthService
         try {
             $user = $this->authRepository->createUserFromRegistration($data);
 
-            // ✅ Login automático después del registro
+            //  Login automático después del registro
             $tokenName = 'auth_token_' . now()->timestamp;
             $token = $user->createToken($tokenName);
             $expiresIn = 24 * 60 * 60; // 24 horas

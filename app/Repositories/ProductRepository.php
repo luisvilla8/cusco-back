@@ -17,7 +17,7 @@ class ProductRepository
     ) {}
 
     /**
-     * ✅ CARGAR RELACIONES SIEMPRE
+     *  CARGAR RELACIONES SIEMPRE
      */
     private function getWithRelations()
     {
@@ -36,7 +36,7 @@ class ProductRepository
             ->active()
             ->withCount('productPriceDetails');
 
-        // ✅ APLICAR FILTROS
+        //  APLICAR FILTROS
         if (!empty($filters['search'])) {
             $query->search($filters['search']);
         }
@@ -53,7 +53,7 @@ class ProductRepository
             $query->byStockStatus($filters['stock_status']);
         }
 
-        // ✅ ORDENAMIENTO
+        //  ORDENAMIENTO
         $sortBy = $filters['sort_by'] ?? 'created_at';
         $sortOrder = strtolower($filters['sort_order'] ?? 'desc');
         
@@ -95,7 +95,7 @@ class ProductRepository
     {
         $product = $this->model->create($data);
         
-        // ✅ RECARGAR CON RELACIONES
+        //  RECARGAR CON RELACIONES
         return $this->findActiveWithRelations($product->id);
     }
 
@@ -104,7 +104,7 @@ class ProductRepository
      */
     public function update(int $id, array $data): Product
     {
-        // ✅ DEBUG: LOG EN REPOSITORY
+        //  DEBUG: LOG EN REPOSITORY
         Log::info('=== DEBUG REPOSITORY UPDATE ===', [
             'product_id' => $id,
             'data_to_update' => $data,
@@ -113,17 +113,17 @@ class ProductRepository
 
         $product = $this->model->findOrFail($id);
         
-        // ✅ DEBUG: LOG PRODUCTO ANTES DE UPDATE
+        //  DEBUG: LOG PRODUCTO ANTES DE UPDATE
         Log::info('=== DEBUG BEFORE UPDATE ===', [
             'current_name' => $product->name,
             'current_price' => $product->price,
             'current_updated_at' => $product->updated_at->toDateTimeString()
         ]);
 
-        // ✅ EJECUTAR UPDATE
+        //  EJECUTAR UPDATE
         $updateResult = $product->update($data);
         
-        // ✅ DEBUG: LOG RESULTADO DEL UPDATE
+        //  DEBUG: LOG RESULTADO DEL UPDATE
         Log::info('=== DEBUG UPDATE RESULT ===', [
             'update_result' => $updateResult,
             'data_was_changed' => $product->wasChanged(),
@@ -131,7 +131,7 @@ class ProductRepository
             'new_updated_at' => $product->fresh()->updated_at->toDateTimeString()
         ]);
         
-        // ✅ RECARGAR CON RELACIONES
+        //  RECARGAR CON RELACIONES
         return $this->findActiveWithRelations($id);
     }
 
@@ -208,7 +208,7 @@ class ProductRepository
                 throw new \InvalidArgumentException("Tipo de operación no válido: {$type}");
         }
 
-        // ✅ RECARGAR CON RELACIONES
+        //  RECARGAR CON RELACIONES
         return $this->findActiveWithRelations($id);
     }
 

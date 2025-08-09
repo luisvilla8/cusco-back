@@ -27,7 +27,7 @@ class StoreUserRequest extends FormRequest
             'password' => 'required|string|min:6',
             'phone' => 'nullable|string|max:20',
             'role_id' => 'required|exists:roles,id',
-            // ✅ CAMBIAR a array de zonas
+            //  CAMBIAR a array de zonas
             'zone_ids' => 'nullable|array',
             'zone_ids.*' => 'exists:zones,id',
         ];

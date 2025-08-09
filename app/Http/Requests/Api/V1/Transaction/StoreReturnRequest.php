@@ -22,13 +22,13 @@ class StoreReturnRequest extends FormRequest
             'date' => 'required|date|before_or_equal:today',
             'description' => 'nullable|string|max:255',
 
-            // ✅ DETALLES DE PRODUCTOS A DEVOLVER
+            //  DETALLES DE PRODUCTOS A DEVOLVER
             'details' => 'required|array|min:1',
             'details.*.product_id' => 'required|integer|exists:products,id',
             'details.*.price' => 'required|numeric|min:0.01',
             'details.*.quantity' => 'required|numeric|min:0.01',
 
-            // ✅ PAGOS OPCIONALES - SOLO REQUERIDOS SI HAY REEMBOLSO
+            //  PAGOS OPCIONALES - SOLO REQUERIDOS SI HAY REEMBOLSO
             'payments' => 'nullable|array',
             'payments.*.payment_method_id' => 'required_with:payments|integer|exists:payment_methods,id,deleted_at,NULL',
             'payments.*.description' => 'nullable|string|max:255'
@@ -56,7 +56,7 @@ class StoreReturnRequest extends FormRequest
             'details.*.quantity.numeric' => 'La cantidad debe ser un número.',
             'details.*.quantity.min' => 'La cantidad debe ser mayor a 0.',
 
-            // ✅ MENSAJES MEJORADOS PARA PAYMENTS
+            //  MENSAJES MEJORADOS PARA PAYMENTS
             'payments.*.payment_method_id.required_with' => 'El método de pago es obligatorio cuando se especifica un reembolso.',
             'payments.*.payment_method_id.exists' => 'El método de pago seleccionado no existe o está inactivo.',
         ];
@@ -73,7 +73,7 @@ class StoreReturnRequest extends FormRequest
             }
 
             try {
-                // ✅ OBTENER TRANSACCIÓN ORIGINAL
+                //  OBTENER TRANSACCIÓN ORIGINAL
                 $originalTransaction = \App\Models\Transaction::with([
                     'transactionDetails.product',
                     'returns.transactionDetails',
@@ -85,13 +85,13 @@ class StoreReturnRequest extends FormRequest
                     return;
                 }
 
-                // ✅ VALIDACIÓN: NO PERMITIR DEVOLVER DEVOLUCIONES
+                //  VALIDACIÓN: NO PERMITIR DEVOLVER DEVOLUCIONES
                 if ($originalTransaction->isReturn()) {
                     $validator->errors()->add('relation_to', 'No se pueden crear devoluciones de una devolución. Solo se pueden devolver transacciones originales (ventas o compras).');
                     return;
                 }
 
-                // ✅ VALIDAR QUE SE PUEDA DEVOLVER
+                //  VALIDAR QUE SE PUEDA DEVOLVER
                 if (!$originalTransaction->canBeReturned()) {
                     $reason = $originalTransaction->isDeliveryPending() ?
                         'La transacción debe estar entregada para poder ser devuelta.' :
@@ -101,13 +101,13 @@ class StoreReturnRequest extends FormRequest
                     return;
                 }
 
-                // ✅ VALIDAR QUE ES TRANSACCIÓN ORIGINAL
+                //  VALIDAR QUE ES TRANSACCIÓN ORIGINAL
                 if (!$originalTransaction->isOriginalTransaction()) {
                     $validator->errors()->add('relation_to', 'Solo se pueden devolver ventas o compras originales.');
                     return;
                 }
 
-                // ✅ OBTENER PRECIOS ORIGINALES
+                //  OBTENER PRECIOS ORIGINALES
                 $originalPrices = $originalTransaction->transactionDetails()
                     ->get()
                     ->mapWithKeys(function ($detail) {
@@ -118,10 +118,10 @@ class StoreReturnRequest extends FormRequest
                     })
                     ->toArray();
 
-                // ✅ OBTENER CANTIDADES YA DEVUELTAS (SOLO DEVOLUCIONES ACTIVAS - NO CANCELADAS)
+                //  OBTENER CANTIDADES YA DEVUELTAS (SOLO DEVOLUCIONES ACTIVAS - NO CANCELADAS)
                 $returnedQuantities = [];
                 foreach ($originalTransaction->returns as $return) {
-                    // ✅ SOLO CONTAR DEVOLUCIONES ACTIVAS
+                    //  SOLO CONTAR DEVOLUCIONES ACTIVAS
                     if (
                         in_array($return->delivery_status, ['DELIVERED', 'RETURNED']) &&
                         $return->delivery_status !== 'CANCELLED' &&
@@ -135,7 +135,7 @@ class StoreReturnRequest extends FormRequest
                     }
                 }
 
-                // ✅ VALIDAR CADA DETALLE DE LA DEVOLUCIÓN
+                //  VALIDAR CADA DETALLE DE LA DEVOLUCIÓN
                 foreach ($details as $index => $detail) {
                     $productId = $detail['product_id'] ?? null;
                     $sentPrice = (float) ($detail['price'] ?? 0);
@@ -143,7 +143,7 @@ class StoreReturnRequest extends FormRequest
 
                     if (!$productId) continue;
 
-                    // ✅ VALIDAR QUE EL PRODUCTO ESTÉ EN LA TRANSACCIÓN ORIGINAL
+                    //  VALIDAR QUE EL PRODUCTO ESTÉ EN LA TRANSACCIÓN ORIGINAL
                     if (!isset($originalPrices[$productId])) {
                         $validator->errors()->add(
                             "details.{$index}.product_id",
@@ -157,7 +157,7 @@ class StoreReturnRequest extends FormRequest
                     $alreadyReturned = $returnedQuantities[$productId] ?? 0;
                     $availableToReturn = $originalQuantity - $alreadyReturned;
 
-                    // ✅ VALIDAR PRECIO ORIGINAL
+                    //  VALIDAR PRECIO ORIGINAL
                     if (abs($sentPrice - $originalPrice) > 0.01) {
                         $validator->errors()->add(
                             "details.{$index}.price",
@@ -166,7 +166,7 @@ class StoreReturnRequest extends FormRequest
                         );
                     }
 
-                    // ✅ VALIDAR CANTIDAD DISPONIBLE PARA DEVOLVER
+                    //  VALIDAR CANTIDAD DISPONIBLE PARA DEVOLVER
                     if ($sentQuantity > $availableToReturn) {
                         $product = \App\Models\Product::find($productId);
                         $productName = $product ? $product->name : "ID {$productId}";

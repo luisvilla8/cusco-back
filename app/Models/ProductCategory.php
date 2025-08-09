@@ -46,7 +46,7 @@ class ProductCategory extends Model
 
     protected $fillable = [
         'name',
-        'code',        // ✅ AGREGAR code al fillable
+        'code',        //  AGREGAR code al fillable
         'description',
     ];
 
@@ -60,7 +60,7 @@ class ProductCategory extends Model
     {
         parent::boot();
 
-        // ✅ AGREGAR generación automática de código
+        //  AGREGAR generación automática de código
         static::creating(function ($productCategory) {
             if (empty($productCategory->code)) {
                 $productCategory->code = $productCategory->generateCode();
@@ -77,7 +77,7 @@ class ProductCategory extends Model
             $productCategory->code = strtoupper(trim($productCategory->code));
         });
 
-        // ✅ AGREGAR validación de unicidad de code
+        //  AGREGAR validación de unicidad de code
         static::saving(function ($productCategory) {
             $codeExists = static::where('code', $productCategory->code)
                 ->when($productCategory->exists, function ($query) use ($productCategory) {
@@ -107,7 +107,7 @@ class ProductCategory extends Model
      */
     public function products(): HasMany
     {
-        return $this->hasMany(Product::class, 'product_category_id'); // ✅ CORREGIR FK
+        return $this->hasMany(Product::class, 'product_category_id'); //  CORREGIR FK
     }
 
     /**

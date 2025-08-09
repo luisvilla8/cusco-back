@@ -101,7 +101,7 @@ class Product extends Model
         'deleted_at' => 'datetime',
     ];
 
-    // ✅ AGREGAR VALIDACIONES EN BOOT
+    //  AGREGAR VALIDACIONES EN BOOT
     protected static function boot()
     {
         parent::boot();
@@ -116,7 +116,7 @@ class Product extends Model
             $product->name = ucwords(trim($product->name));
             $product->code = strtoupper(trim($product->code));
 
-            // ✅ VALIDAR QUE STOCK NO SEA NEGATIVO
+            //  VALIDAR QUE STOCK NO SEA NEGATIVO
             if ($product->stock < 0) {
                 throw new \InvalidArgumentException('El stock no puede ser negativo');
             }
@@ -133,7 +133,7 @@ class Product extends Model
             $product->name = ucwords(trim($product->name));
             $product->code = strtoupper(trim($product->code));
 
-            // ✅ VALIDAR QUE STOCK NO SEA NEGATIVO
+            //  VALIDAR QUE STOCK NO SEA NEGATIVO
             if ($product->stock < 0) {
                 throw new \InvalidArgumentException('El stock no puede ser negativo');
             }
@@ -142,7 +142,7 @@ class Product extends Model
                 throw new \InvalidArgumentException('El stock reservado no puede ser negativo');
             }
 
-            // ✅ VALIDAR QUE RESERVED_STOCK NO EXCEDA STOCK TOTAL
+            //  VALIDAR QUE RESERVED_STOCK NO EXCEDA STOCK TOTAL
             if ($product->reserved_stock > $product->stock) {
                 throw new \InvalidArgumentException('El stock reservado no puede exceder el stock total');
             }
@@ -438,7 +438,7 @@ class Product extends Model
         return static::active()->byCode($code)->first();
     }
 
-    // ✅ MÉTODO PRINCIPAL PARA ACTUALIZAR STOCK
+    //  MÉTODO PRINCIPAL PARA ACTUALIZAR STOCK
     public function updateStock(float $quantity, string $operation = 'ADD'): void
     {
         $operation = strtoupper($operation);
@@ -557,7 +557,7 @@ class Product extends Model
         ];
     }
 
-    // ✅ ASEGURAR QUE ESTOS MÉTODOS EXISTAN
+    //  ASEGURAR QUE ESTOS MÉTODOS EXISTAN
     public function reserveStock(float $quantity): void
     {
         $this->increment('reserved_stock', $quantity);

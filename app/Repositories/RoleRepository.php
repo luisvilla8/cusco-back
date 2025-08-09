@@ -66,7 +66,7 @@ class RoleRepository
     {
         return DB::transaction(function () use ($data) {
             $role = $this->model->create($data);
-            // ✅ RECARGAR: Con count para response consistente
+            //  RECARGAR: Con count para response consistente
             return $this->findActiveWithCount($role->id);
         });
     }
@@ -78,7 +78,7 @@ class RoleRepository
             if (!$role) return null;
             
             $role->update($data);
-            // ✅ RECARGAR: Con count actualizado
+            //  RECARGAR: Con count actualizado
             return $this->findActiveWithCount($id);
         });
     }
@@ -94,14 +94,14 @@ class RoleRepository
         });
     }
 
-    // ✅ CORREGIR MÉTODO forceDelete - SIN MODIFICAR users_count
+    //  CORREGIR MÉTODO forceDelete - SIN MODIFICAR users_count
     public function forceDelete(int $id): ?Role
     {
         return DB::transaction(function () use ($id) {
             $role = $this->findWithTrashedAndCount($id);
             if (!$role) return null;
             
-            // ✅ CREAR SNAPSHOT SIN MODIFICAR PROPIEDADES COMPUTADAS
+            //  CREAR SNAPSHOT SIN MODIFICAR PROPIEDADES COMPUTADAS
             $snapshot = new Role();
             $snapshot->id = $role->id;
             $snapshot->name = $role->name;
@@ -112,7 +112,7 @@ class RoleRepository
             $snapshot->deleted_at = $role->deleted_at;
             $snapshot->exists = true;
             
-            // ✅ AGREGAR users_count COMO ATRIBUTO ADICIONAL (NO PROPIEDAD)
+            //  AGREGAR users_count COMO ATRIBUTO ADICIONAL (NO PROPIEDAD)
             $snapshot->setAttribute('users_count', $role->users_count ?? 0);
             
             $role->forceDelete();

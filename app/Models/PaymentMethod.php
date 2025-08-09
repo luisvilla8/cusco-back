@@ -75,13 +75,13 @@ class PaymentMethod extends Model
         'deleted_at' => 'datetime',
     ];
 
-    // ✅ RELACIONES
+    //  RELACIONES
     public function transactionPayments(): HasMany
     {
         return $this->hasMany(TransactionPayment::class);
     }
 
-    // ✅ SCOPES
+    //  SCOPES
     public function scopeActive(Builder $query): Builder
     {
         return $query->whereNull('deleted_at');
@@ -127,7 +127,7 @@ class PaymentMethod extends Model
         return $query->withSum('transactionPayments', 'amount_paid');
     }
 
-    // ✅ ACCESSORS
+    //  ACCESSORS
     public function getDisplayNameAttribute(): string
     {
         return "{$this->name} ({$this->code})";
@@ -206,7 +206,7 @@ class PaymentMethod extends Model
         ];
     }
 
-    // ✅ MÉTODOS DE NEGOCIO
+    //  MÉTODOS DE NEGOCIO
     public function isActive(): bool
     {
         return is_null($this->deleted_at);
@@ -322,7 +322,7 @@ class PaymentMethod extends Model
             ->sum('amount_paid');
     }
 
-    // ✅ MÉTODOS ESTÁTICOS DE UTILIDAD
+    //  MÉTODOS ESTÁTICOS DE UTILIDAD
     public static function findByCode(string $code): ?self
     {
         return static::active()->byCode($code)->first();
@@ -389,7 +389,7 @@ class PaymentMethod extends Model
         })->sortByDesc('total_amount')->values()->toArray();
     }
 
-    // ✅ VALIDACIONES EN EVENTOS DEL MODELO
+    //  VALIDACIONES EN EVENTOS DEL MODELO
     protected static function boot()
     {
         parent::boot();

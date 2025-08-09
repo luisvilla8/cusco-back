@@ -6,5 +6,5 @@ use Illuminate\Support\Facades\Route;
 // Rutas públicas de autenticación
 Route::name('auth.')->group(function () {
   Route::post('login', [AuthController::class, 'login'])->name('login');
-    Route::post('register', [AuthController::class, 'register'])->name('register');
+  // Route::post('register', [AuthController::class, 'register'])->name('register');
 });

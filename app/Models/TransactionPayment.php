@@ -21,7 +21,7 @@ class TransactionPayment extends Model
         'payment_method_id',
         'amount_paid',
         'code',
-        'description' // ✅ NUEVO CAMPO
+        'description' //  NUEVO CAMPO
     ];
 
     protected $casts = [
@@ -31,7 +31,7 @@ class TransactionPayment extends Model
         'deleted_at' => 'datetime',
     ];
 
-    // ✅ RELACIONES
+    //  RELACIONES
     public function transaction(): BelongsTo
     {
         return $this->belongsTo(Transaction::class);
@@ -42,7 +42,7 @@ class TransactionPayment extends Model
         return $this->belongsTo(PaymentMethod::class);
     }
 
-    // ✅ SCOPES
+    //  SCOPES
     public function scopeActive(Builder $query): Builder
     {
         return $query->whereNull('deleted_at');
@@ -75,7 +75,7 @@ class TransactionPayment extends Model
                     ->where('description', '!=', '');
     }
 
-    // ✅ ACCESSORS
+    //  ACCESSORS
     public function getFormattedAmountAttribute(): string
     {
         return "S/ " . number_format($this->amount_paid, 2);
@@ -106,7 +106,7 @@ class TransactionPayment extends Model
         return !empty($this->description);
     }
 
-    // ✅ EVENTOS DEL MODELO
+    //  EVENTOS DEL MODELO
     protected static function boot()
     {
         parent::boot();
@@ -118,21 +118,21 @@ class TransactionPayment extends Model
         });
 
         static::saving(function ($transactionPayment) {
-            // ✅ VALIDAR QUE amount_paid SEA UN NÚMERO VÁLIDO
+            //  VALIDAR QUE amount_paid SEA UN NÚMERO VÁLIDO
             if (!is_numeric($transactionPayment->amount_paid)) {
                 throw new \InvalidArgumentException('El monto del pago debe ser un número válido.');
             }
             
-            // ✅ VALIDAR QUE NO SEA CERO
+            //  VALIDAR QUE NO SEA CERO
             if ($transactionPayment->amount_paid == 0) {
                 throw new \InvalidArgumentException('El monto del pago no puede ser cero.');
             }
             
-            // ✅ PERMITIR TANTO PAGOS (POSITIVOS) COMO REEMBOLSOS (POSITIVOS TAMBIÉN)
+            //  PERMITIR TANTO PAGOS (POSITIVOS) COMO REEMBOLSOS (POSITIVOS TAMBIÉN)
             // Los reembolsos se registran como montos positivos en transaction_payments
             // porque representan dinero que la empresa entrega al cliente
             
-            // ✅ VALIDAR MÉTODO DE PAGO ACTIVO
+            //  VALIDAR MÉTODO DE PAGO ACTIVO
             if ($transactionPayment->payment_method_id) {
                 $paymentMethod = PaymentMethod::active()->find($transactionPayment->payment_method_id);
                 if (!$paymentMethod) {
@@ -140,7 +140,7 @@ class TransactionPayment extends Model
                 }
             }
             
-            // ✅ LOGGING MEJORADO PARA DEBUG
+            //  LOGGING MEJORADO PARA DEBUG
             $transaction = Transaction::find($transactionPayment->transaction_id);
             $isReturnTransaction = $transaction ? $transaction->isReturn() : false;
             
@@ -156,42 +156,42 @@ class TransactionPayment extends Model
         });
     }
 
-    // ✅ MÉTODOS DE NEGOCIO
+    //  MÉTODOS DE NEGOCIO
     public function generateCode(int $attempt = 0): string
     {
         $prefix = 'PAY';
         $date = now()->format('dmy'); // Formato: 060825
         
-        // ✅ OBTENER CONTEO DIARIO INCLUYENDO SOFT DELETED PARA EVITAR DUPLICADOS
-        $dailyCount = static::withTrashed() // ✅ INCLUIR SOFT DELETED
+        //  OBTENER CONTEO DIARIO INCLUYENDO SOFT DELETED PARA EVITAR DUPLICADOS
+        $dailyCount = static::withTrashed() //  INCLUIR SOFT DELETED
             ->whereDate('created_at', now())
             ->count() + 1 + $attempt;
         
         $sequentialNumber = str_pad($dailyCount, 4, '0', STR_PAD_LEFT);
         $proposedCode = "{$prefix}-{$date}-{$sequentialNumber}";
         
-        // ✅ VERIFICAR QUE EL CÓDIGO NO EXISTA (INCLUYENDO SOFT DELETED)
-        $exists = static::withTrashed() // ✅ INCLUIR SOFT DELETED EN VERIFICACIÓN
+        //  VERIFICAR QUE EL CÓDIGO NO EXISTA (INCLUYENDO SOFT DELETED)
+        $exists = static::withTrashed() //  INCLUIR SOFT DELETED EN VERIFICACIÓN
             ->where('code', $proposedCode)
             ->exists();
         
-        // ✅ SI EXISTE, INTENTAR CON EL SIGUIENTE NÚMERO
+        //  SI EXISTE, INTENTAR CON EL SIGUIENTE NÚMERO
         if ($exists && $attempt < 100) {
             return $this->generateCode($attempt + 1);
         }
         
-        // ✅ SI DESPUÉS DE 100 INTENTOS SIGUE FALLANDO, USAR TIMESTAMP
+        //  SI DESPUÉS DE 100 INTENTOS SIGUE FALLANDO, USAR TIMESTAMP
         if ($attempt >= 100) {
             $timestamp = now()->format('His'); // HHMMSS
             $proposedCode = "{$prefix}-{$date}-{$timestamp}";
             
-            // ✅ VERIFICACIÓN FINAL CON TIMESTAMP
+            //  VERIFICACIÓN FINAL CON TIMESTAMP
             $timestampExists = static::withTrashed()
                 ->where('code', $proposedCode)
                 ->exists();
                 
             if ($timestampExists) {
-                // ✅ ÚLTIMO RECURSO: AGREGAR MICROSEGUNDOS
+                //  ÚLTIMO RECURSO: AGREGAR MICROSEGUNDOS
                 $microtime = substr(microtime(true) * 1000, -3);
                 $proposedCode = "{$prefix}-{$date}-{$timestamp}{$microtime}";
             }
@@ -240,7 +240,7 @@ class TransactionPayment extends Model
         return !empty($this->description);
     }
 
-    // ✅ MÉTODOS ESTÁTICOS DE UTILIDAD
+    //  MÉTODOS ESTÁTICOS DE UTILIDAD
     public static function getTotalByTransaction(int $transactionId): float
     {
         return static::active()
@@ -276,7 +276,7 @@ class TransactionPayment extends Model
             ->get();
     }
 
-    // ✅ MÉTODOS PARA ANÁLISIS Y REPORTES
+    //  MÉTODOS PARA ANÁLISIS Y REPORTES
     public function getPaymentSummary(): array
     {
         return [
@@ -293,7 +293,7 @@ class TransactionPayment extends Model
         ];
     }
 
-    // ✅ AGREGAR MÉTODOS HELPER MEJORADOS
+    //  AGREGAR MÉTODOS HELPER MEJORADOS
     public function isRefund(): bool
     {
         // Un reembolso es un pago asociado a una transacción de devolución

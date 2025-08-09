@@ -173,7 +173,7 @@ class TransactionType extends Model
         return TransactionType::where('id', $agentType)->first();
     }
 
-    // ✅ AGREGAR SCOPE DE BÚSQUEDA
+    //  AGREGAR SCOPE DE BÚSQUEDA
     public function scopeSearch($query, string $search)
     {
         return $query->where(function ($q) use ($search) {
@@ -183,7 +183,7 @@ class TransactionType extends Model
         });
     }
 
-    // ✅ AGREGAR ACCESSOR
+    //  AGREGAR ACCESSOR
     public function getDisplayNameAttribute(): string
     {
         return "{$this->name} ({$this->code})";

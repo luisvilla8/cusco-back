@@ -19,7 +19,7 @@ class TripService
     ) {}
 
     /**
-     * ✅ OBTENER TODOS LOS TRIPS (con permisos)
+     *  OBTENER TODOS LOS TRIPS (con permisos)
      */
     public function getAllTrips(array $filters = []): array
     {
@@ -41,7 +41,7 @@ class TripService
     }
 
     /**
-     * ✅ OBTENER TRIP ESPECÍFICO (con permisos)
+     *  OBTENER TRIP ESPECÍFICO (con permisos)
      */
     public function getTrip(int $id): array
     {
@@ -63,13 +63,13 @@ class TripService
     }
 
     /**
-     * ✅ CREAR TRIP CON NUEVA LÓGICA DE ASIGNACIÓN DE USUARIO
+     *  CREAR TRIP CON NUEVA LÓGICA DE ASIGNACIÓN DE USUARIO
      */
     public function createTrip(array $data): array
     {
         $user = Auth::user();
         
-        // ✅ NUEVA LÓGICA DE ASIGNACIÓN DE USUARIO
+        //  NUEVA LÓGICA DE ASIGNACIÓN DE USUARIO
         if ($user->hasRole('Vendedor')) {
             // VENDEDORES: SIEMPRE usar su propio ID (ignorar user_id del request)
             $data['user_id'] = $user->id;
@@ -123,7 +123,7 @@ class TripService
             $trip = $this->tripRepository->create($data);
             $tripDTO = TripMapper::modelToDTO($trip);
 
-            // ✅ LOG SI SE CREÓ EGRESO AUTOMÁTICAMENTE
+            //  LOG SI SE CREÓ EGRESO AUTOMÁTICAMENTE
             $travelExpenseEgress = $trip->getTravelExpenseEgress();
             if ($travelExpenseEgress) {
                 $this->logInfo('Travel expense egress created automatically', [
@@ -161,7 +161,7 @@ class TripService
     }
 
     /**
-     * ✅ ACTUALIZAR TRIP CON SINCRONIZACIÓN DE EGRESO
+     *  ACTUALIZAR TRIP CON SINCRONIZACIÓN DE EGRESO
      */
     public function updateTrip(int $id, array $data): array
     {
@@ -179,7 +179,7 @@ class TripService
                 return ResponseHelper::notFound('Viaje no encontrado o no tienes permisos para editarlo');
             }
 
-            // ✅ LOG CAMBIOS EN EGRESO
+            //  LOG CAMBIOS EN EGRESO
             if (isset($data['travel_expenses'])) {
                 $travelExpenseEgress = $trip->getTravelExpenseEgress();
                 $this->logInfo('Travel expenses updated, egress synced', [
@@ -207,7 +207,7 @@ class TripService
     }
 
     /**
-     * ✅ ELIMINAR TRIP CON EGRESO ASOCIADO
+     *  ELIMINAR TRIP CON EGRESO ASOCIADO
      */
     public function deleteTrip(int $id): array
     {
@@ -250,7 +250,7 @@ class TripService
     }
 
     /**
-     * ✅ ELIMINAR TRIP PERMANENTEMENTE CON EGRESO - MEJORADO
+     *  ELIMINAR TRIP PERMANENTEMENTE CON EGRESO - MEJORADO
      */
     public function forceDeleteTrip(int $id): array
     {
@@ -268,7 +268,7 @@ class TripService
                 return ResponseHelper::notFound('Viaje no encontrado');
             }
 
-            // ✅ OBTENER DETALLES DE DEPENDENCIAS ANTES DE ELIMINAR
+            //  OBTENER DETALLES DE DEPENDENCIAS ANTES DE ELIMINAR
             $dependencies = $tripBeforeDelete->getDependenciesDetails();
             
             $this->logInfo('Trip dependencies before force delete', [
@@ -284,7 +284,7 @@ class TripService
                     ->first();
             }
 
-            // ✅ VERIFICAR PERMISOS
+            //  VERIFICAR PERMISOS
             if (!$tripBeforeDelete->canUserEdit($user)) {
                 return ResponseHelper::forbidden('No tienes permisos para eliminar este viaje');
             }
@@ -319,7 +319,7 @@ class TripService
                 'trace' => $e->getTraceAsString()
             ]);
             
-            // ✅ MANEJAR DIFERENTES TIPOS DE ERROR
+            //  MANEJAR DIFERENTES TIPOS DE ERROR
             if (str_contains($e->getMessage(), 'dependencias')) {
                 return ResponseHelper::error($e->getMessage(), 422);
             }
@@ -329,7 +329,7 @@ class TripService
     }
 
     /**
-     * ✅ LISTA PARA DROPDOWNS (con permisos)
+     *  LISTA PARA DROPDOWNS (con permisos)
      */
     public function getTripsList(): array
     {

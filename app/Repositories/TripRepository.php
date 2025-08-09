@@ -32,18 +32,18 @@ class TripRepository
     }
 
     /**
-     * ✅ OBTENER TRIPS CON FILTROS Y PERMISOS
+     *  OBTENER TRIPS CON FILTROS Y PERMISOS
      */
     public function getAllActiveWithPagination(array $filters, User $user): LengthAwarePaginator
     {
         $query = $this->model->active()->withRelations();
 
-        // ✅ FILTRAR POR PERMISOS: Vendedores solo ven sus trips
+        //  FILTRAR POR PERMISOS: Vendedores solo ven sus trips
         if (!$user->hasAnyRole(['Administrador', 'Super Admin'])) {
             $query->byUser($user->id);
         }
 
-        // ✅ APLICAR FILTROS
+        //  APLICAR FILTROS
         if (!empty($filters['search'])) {
             $query->search($filters['search']);
         }
@@ -73,7 +73,7 @@ class TripRepository
             $query->whereDate('date_end', '<=', $filters['date_end']);
         }
 
-        // ✅ ORDENAMIENTO
+        //  ORDENAMIENTO
         $sortBy = $filters['sort_by'] ?? 'date_start';
         $sortOrder = $filters['sort_order'] ?? 'desc';
         
@@ -87,7 +87,7 @@ class TripRepository
     }
 
     /**
-     * ✅ APLICAR FILTRO DE ESTADO
+     *  APLICAR FILTRO DE ESTADO
      */
     private function applyStatusFilter($query, string $status): void
     {
@@ -101,7 +101,7 @@ class TripRepository
     }
 
     /**
-     * ✅ PARA DROPDOWNS (con permisos)
+     *  PARA DROPDOWNS (con permisos)
      */
     public function getActiveForDropdown(User $user): Collection
     {
@@ -159,7 +159,7 @@ class TripRepository
                 return null;
             }
             
-            // ✅ LOGGING DETALLADO
+            //  LOGGING DETALLADO
             \Log::info("Starting force delete process", [
                 'trip_id' => $id,
                 'user_id' => $user->id
@@ -172,7 +172,7 @@ class TripRepository
             $snapshot->exists = true;
             
             try {
-                // ✅ FORZAR ELIMINACIÓN SIN EVENTOS (para evitar problemas)
+                //  FORZAR ELIMINACIÓN SIN EVENTOS (para evitar problemas)
                 $trip->forceDelete();
                 
                 \Log::info("Trip force deleted successfully", [
@@ -193,7 +193,7 @@ class TripRepository
     }
 
     /**
-     * ✅ VERIFICAR ACCESO A TRIP
+     *  VERIFICAR ACCESO A TRIP
      */
     public function canUserAccessTrip(int $tripId, User $user): bool
     {

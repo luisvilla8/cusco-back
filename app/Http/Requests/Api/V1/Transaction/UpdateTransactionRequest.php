@@ -23,13 +23,13 @@ class UpdateTransactionRequest extends FormRequest
             'description' => 'nullable|string|max:1000',
             'date' => 'sometimes|required|date|before_or_equal:today',
             
-            // ✅ DETALLES DE PRODUCTOS (OPCIONALES PARA UPDATE)
+            //  DETALLES DE PRODUCTOS (OPCIONALES PARA UPDATE)
             'details' => 'sometimes|array|min:1',
             'details.*.product_id' => 'required_with:details|integer|exists:products,id',
             'details.*.price' => 'required_with:details|numeric|min:0.01',
             'details.*.quantity' => 'required_with:details|numeric|min:0.01',
             
-            // ✅ PAGOS (OPCIONALES PARA UPDATE)
+            //  PAGOS (OPCIONALES PARA UPDATE)
             'payments' => 'sometimes|array',
             'payments.*.payment_method_id' => 'required_with:payments|integer|exists:payment_methods,id',
             'payments.*.amount_paid' => 'required_with:payments|numeric|min:0.01',
@@ -64,10 +64,10 @@ class UpdateTransactionRequest extends FormRequest
     public function withValidator($validator)
     {
         $validator->after(function ($validator) {
-            // ✅ OBTENER ID DE LA TRANSACCIÓN QUE SE ESTÁ ACTUALIZANDO
+            //  OBTENER ID DE LA TRANSACCIÓN QUE SE ESTÁ ACTUALIZANDO
             $transactionId = $this->route('id');
             
-            // ✅ VALIDAR PRECIOS ACTUALIZADOS Y STOCK CORREGIDO
+            //  VALIDAR PRECIOS ACTUALIZADOS Y STOCK CORREGIDO
             if ($this->has('details')) {
                 $details = $this->input('details', []);
                 $zoneId = $this->input('zone_id');
@@ -78,7 +78,7 @@ class UpdateTransactionRequest extends FormRequest
                     $zoneId = $transaction?->zone_id;
                 }
                 
-                // ✅ OBTENER TRANSACCIÓN ACTUAL PARA VERIFICAR TIPO Y DETALLES EXISTENTES
+                //  OBTENER TRANSACCIÓN ACTUAL PARA VERIFICAR TIPO Y DETALLES EXISTENTES
                 $currentTransaction = null;
                 $oldDetails = [];
                 
@@ -86,7 +86,7 @@ class UpdateTransactionRequest extends FormRequest
                     $currentTransaction = \App\Models\Transaction::with(['transactionDetails.product', 'transactionType'])->find($transactionId);
                     
                     if ($currentTransaction) {
-                        // ✅ OBTENER DETALLES ACTUALES AGRUPADOS POR PRODUCTO
+                        //  OBTENER DETALLES ACTUALES AGRUPADOS POR PRODUCTO
                         foreach ($currentTransaction->transactionDetails as $oldDetail) {
                             $productId = $oldDetail->product_id;
                             $oldDetails[$productId] = ($oldDetails[$productId] ?? 0) + $oldDetail->quantity;
@@ -113,12 +113,12 @@ class UpdateTransactionRequest extends FormRequest
                                     );
                                 }
                                 
-                                // ✅ VALIDAR STOCK CORREGIDO - SOLO PARA VENTAS PENDING
+                                //  VALIDAR STOCK CORREGIDO - SOLO PARA VENTAS PENDING
                                 if ($currentTransaction->isSale() && $currentTransaction->isDeliveryPending()) {
                                     $newQuantity = (float) ($detail['quantity'] ?? 0);
                                     $oldQuantityForThisProduct = $oldDetails[$productId] ?? 0;
                                     
-                                    // ✅ CALCULAR STOCK DISPONIBLE CONSIDERANDO LA LIBERACIÓN DE LA RESERVA ACTUAL
+                                    //  CALCULAR STOCK DISPONIBLE CONSIDERANDO LA LIBERACIÓN DE LA RESERVA ACTUAL
                                     $currentReservedStock = $product->reserved_stock;
                                     $stockAfterRelease = $product->stock - ($currentReservedStock - $oldQuantityForThisProduct);
                                     $availableStock = $stockAfterRelease;
@@ -159,10 +159,10 @@ class UpdateTransactionRequest extends FormRequest
                 }
             }
             
-            // ✅ RESTO DE VALIDACIONES EXISTENTES...
+            //  RESTO DE VALIDACIONES EXISTENTES...
             $user = $this->user();
             
-            // ✅ VALIDACIÓN DE ZONA PARA VENDEDORES (SOLO SI SE ESTÁ ACTUALIZANDO LA ZONA)
+            //  VALIDACIÓN DE ZONA PARA VENDEDORES (SOLO SI SE ESTÁ ACTUALIZANDO LA ZONA)
             if ($user->hasRole('Vendedor') && $this->has('zone_id')) {
                 $zoneId = $this->input('zone_id');
                 
@@ -173,7 +173,7 @@ class UpdateTransactionRequest extends FormRequest
                 }
             }
             
-            // ✅ VALIDAR PAYMENT METHODS ACTIVOS (SI SE ESTÁN ACTUALIZANDO)
+            //  VALIDAR PAYMENT METHODS ACTIVOS (SI SE ESTÁN ACTUALIZANDO)
             if ($this->has('payments')) {
                 $payments = $this->input('payments', []);
                 
@@ -195,7 +195,7 @@ class UpdateTransactionRequest extends FormRequest
         });
     }
 
-    // ✅ MÉTODOS HELPER PARA PRECIOS
+    //  MÉTODOS HELPER PARA PRECIOS
     private function getProductPriceForZone(int $productId, int $zoneId): float
     {
         $zonePriceDetail = \App\Models\ProductPriceDetail::active()

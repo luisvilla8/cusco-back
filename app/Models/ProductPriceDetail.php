@@ -61,7 +61,7 @@ class ProductPriceDetail extends Model
         'deleted_at' => 'datetime',
     ];
 
-    // ✅ RELACIONES
+    //  RELACIONES
     public function zone(): BelongsTo
     {
         return $this->belongsTo(Zone::class);
@@ -72,7 +72,7 @@ class ProductPriceDetail extends Model
         return $this->belongsTo(Product::class);
     }
 
-    // ✅ SCOPES
+    //  SCOPES
     public function scopeActive(Builder $query): Builder
     {
         return $query->whereNull('deleted_at');
@@ -93,7 +93,7 @@ class ProductPriceDetail extends Model
         return $query->where('code', $code);
     }
 
-    // ✅ MÉTODOS DE NEGOCIO
+    //  MÉTODOS DE NEGOCIO
     public function generateCode(): string
     {
         $productCode = $this->product?->code ?? 'PROD';
@@ -110,7 +110,7 @@ class ProductPriceDetail extends Model
         return static::active()->byCode($code)->first();
     }
 
-    // ✅ VALIDACIONES EN EVENTOS DEL MODELO
+    //  VALIDACIONES EN EVENTOS DEL MODELO
     protected static function boot()
     {
         parent::boot();

@@ -27,16 +27,16 @@ class StoreTransactionRequest extends FormRequest
             'delivery_status' => 'nullable|in:PENDING,DELIVERED,RETURNED,CANCELLED',
             'payment_status' => 'nullable|in:PENDING,PARTIAL,PAID,CANCELLED',
             
-            // ✅ relation_to NO DEBE ESTAR AQUÍ (SOLO PARA DEVOLUCIONES)
+            //  relation_to NO DEBE ESTAR AQUÍ (SOLO PARA DEVOLUCIONES)
             // 'relation_to' => 'nullable|integer|exists:transactions,id',
             
-            // ✅ DETALLES DE PRODUCTOS
+            //  DETALLES DE PRODUCTOS
             'details' => 'required|array|min:1',
             'details.*.product_id' => 'required|integer|exists:products,id',
             'details.*.price' => 'required|numeric|min:0.01',
             'details.*.quantity' => 'required|numeric|min:0.01',
             
-            // ✅ PAGOS CON DESCRIPTION OPCIONAL
+            //  PAGOS CON DESCRIPTION OPCIONAL
             'payments' => 'nullable|array',
             'payments.*.payment_method_id' => 'required_with:payments|integer|exists:payment_methods,id',
             'payments.*.amount_paid' => 'required_with:payments|numeric|min:0.01',
@@ -90,7 +90,7 @@ class StoreTransactionRequest extends FormRequest
         $validator->after(function ($validator) {
             $user = $this->user();
             
-            // ✅ OBTENER TIPO DE TRANSACCIÓN PARA VALIDACIONES ESPECÍFICAS
+            //  OBTENER TIPO DE TRANSACCIÓN PARA VALIDACIONES ESPECÍFICAS
             $transactionTypeId = $this->input('transaction_type_id');
             $transactionType = null;
             
@@ -112,7 +112,7 @@ class StoreTransactionRequest extends FormRequest
                 ['RETURN_SALE', 'RETURN_PURCHASE']
             );
             
-            // ✅ VALIDACIÓN DE ZONA PARA VENDEDORES
+            //  VALIDACIÓN DE ZONA PARA VENDEDORES
             if ($user->hasRole('Vendedor')) {
                 $zoneId = $this->input('zone_id');
                 
@@ -139,7 +139,7 @@ class StoreTransactionRequest extends FormRequest
                 }
             }
             
-            // ✅ VALIDACIÓN AGENT_ID SEGÚN TRANSACTION_TYPE_ID
+            //  VALIDACIÓN AGENT_ID SEGÚN TRANSACTION_TYPE_ID
             $agentId = $this->input('agent_id');
             
             if ($agentId && $transactionType) {
@@ -151,7 +151,7 @@ class StoreTransactionRequest extends FormRequest
                         return;
                     }
                     
-                    // ✅ VALIDAR SEGÚN EL TIPO DE TRANSACCIÓN
+                    //  VALIDAR SEGÚN EL TIPO DE TRANSACCIÓN
                     $transactionCode = strtoupper($transactionType->code);
                     $agentTypeName = strtolower($agent->agentType?->name ?? '');
                     
@@ -168,7 +168,7 @@ class StoreTransactionRequest extends FormRequest
                             );
                         }
                     } elseif (in_array($transactionCode, ['RETURN_SALE', 'RETURN_PURCHASE'])) {
-                        // ✅ DEVOLUCIONES: Validar contra transacción original
+                        //  DEVOLUCIONES: Validar contra transacción original
                         $relationTo = $this->input('relation_to');
                         if ($relationTo) {
                             $originalTransaction = \App\Models\Transaction::find($relationTo);
@@ -192,7 +192,7 @@ class StoreTransactionRequest extends FormRequest
                 }
             }
             
-            // ✅ VALIDAR PAYMENT METHODS ACTIVOS
+            //  VALIDAR PAYMENT METHODS ACTIVOS
             $payments = $this->input('payments', []);
             if (!empty($payments)) {
                 foreach ($payments as $index => $payment) {
@@ -227,7 +227,7 @@ class StoreTransactionRequest extends FormRequest
                 }
             }
             
-            // ✅ VALIDAR PRODUCTOS Y PRECIOS MEJORADO
+            //  VALIDAR PRODUCTOS Y PRECIOS MEJORADO
             $details = $this->input('details', []);
             if (!empty($details)) {
                 $zoneId = $this->input('zone_id');
@@ -268,10 +268,10 @@ class StoreTransactionRequest extends FormRequest
                             'product_reserved_stock' => $product->reserved_stock
                         ]);
                         
-                        // ✅ VALIDAR PRECIOS SOLO PARA TRANSACCIONES ORIGINALES (NO DEVOLUCIONES)
+                        //  VALIDAR PRECIOS SOLO PARA TRANSACCIONES ORIGINALES (NO DEVOLUCIONES)
                         if (!$isReturn && $zoneId) {
                             try {
-                                // ✅ OBTENER PRECIO SEGÚN LA ZONA
+                                //  OBTENER PRECIO SEGÚN LA ZONA
                                 $currentPrice = $this->getProductPriceForZone($productId, $zoneId);
                                 $sentPrice = (float) ($detail['price'] ?? 0);
                                 
@@ -282,7 +282,7 @@ class StoreTransactionRequest extends FormRequest
                                     'zone_id' => $zoneId
                                 ]);
                                 
-                                // ✅ COMPARAR PRECIO ENVIADO CON PRECIO ACTUAL
+                                //  COMPARAR PRECIO ENVIADO CON PRECIO ACTUAL
                                 if (abs($sentPrice - $currentPrice) > 0.01) {
                                     $priceSource = $this->getPriceSource($productId, $zoneId);
                                     $validator->errors()->add(
@@ -304,7 +304,7 @@ class StoreTransactionRequest extends FormRequest
                             }
                         }
                         
-                        // ✅ VALIDAR STOCK DISPONIBLE (SOLO PARA VENTAS)
+                        //  VALIDAR STOCK DISPONIBLE (SOLO PARA VENTAS)
                         if (!$isReturn && $transactionType && $transactionType->code === 'SALE') {
                             try {
                                 $quantity = (float) ($detail['quantity'] ?? 0);
@@ -318,7 +318,7 @@ class StoreTransactionRequest extends FormRequest
                                     'requested_quantity' => $quantity
                                 ]);
                                 
-                                // ✅ USAR hasSufficientStock EN LUGAR DE hasStock
+                                //  USAR hasSufficientStock EN LUGAR DE hasStock
                                 if (!$product->hasSufficientStock($quantity)) {
                                     $validator->errors()->add(
                                         "details.{$index}.quantity", 
@@ -358,7 +358,7 @@ class StoreTransactionRequest extends FormRequest
                 }
             }
             
-            // ✅ VALIDAR QUE LA SUMA DE PAGOS NO EXCEDA EL TOTAL
+            //  VALIDAR QUE LA SUMA DE PAGOS NO EXCEDA EL TOTAL
             if (!empty($details) && !empty($payments)) {
                 try {
                     $total = collect($details)->sum(fn($detail) => ($detail['price'] ?? 0) * ($detail['quantity'] ?? 0));
@@ -378,7 +378,7 @@ class StoreTransactionRequest extends FormRequest
         });
     }
 
-    // ✅ MÉTODO PRIVADO MEJORADO CON MÁS LOGGING
+    //  MÉTODO PRIVADO MEJORADO CON MÁS LOGGING
     private function getProductPriceForZone(int $productId, int $zoneId): float
     {
         try {
@@ -422,7 +422,7 @@ class StoreTransactionRequest extends FormRequest
         }
     }
 
-    // ✅ MÉTODO PRIVADO MEJORADO: Obtener fuente del precio para mensajes
+    //  MÉTODO PRIVADO MEJORADO: Obtener fuente del precio para mensajes
     private function getPriceSource(int $productId, int $zoneId): string
     {
         try {

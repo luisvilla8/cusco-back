@@ -12,7 +12,7 @@ abstract class BaseIndexRequest extends FormRequest
     }
 
     /**
-     * ✅ REGLAS COMUNES: Paginación y búsqueda
+     *  REGLAS COMUNES: Paginación y búsqueda
      */
     public function rules(): array
     {
@@ -20,7 +20,7 @@ abstract class BaseIndexRequest extends FormRequest
     }
 
     /**
-     * ✅ REGLAS COMPARTIDAS: Para todos los índices
+     *  REGLAS COMPARTIDAS: Para todos los índices
      */
     protected function getCommonRules(): array
     {
@@ -33,12 +33,12 @@ abstract class BaseIndexRequest extends FormRequest
     }
 
     /**
-     * ✅ ABSTRACT: Cada hijo define sus campos específicos
+     *  ABSTRACT: Cada hijo define sus campos específicos
      */
     abstract protected function getSpecificRules(): array;
 
     /**
-     * ✅ MENSAJES COMUNES
+     *  MENSAJES COMUNES
      */
     public function messages(): array
     {
@@ -46,7 +46,7 @@ abstract class BaseIndexRequest extends FormRequest
     }
 
     /**
-     * ✅ MENSAJES COMPARTIDOS
+     *  MENSAJES COMPARTIDOS
      */
     protected function getCommonMessages(): array
     {
@@ -63,7 +63,7 @@ abstract class BaseIndexRequest extends FormRequest
     }
 
     /**
-     * ✅ ABSTRACT: Cada hijo define sus mensajes específicos
+     *  ABSTRACT: Cada hijo define sus mensajes específicos
      */
     protected function getSpecificMessages(): array
     {
@@ -71,12 +71,12 @@ abstract class BaseIndexRequest extends FormRequest
     }
 
     /**
-     * ✅ HELPER: Obtener campos de ordenamiento permitidos
+     *  HELPER: Obtener campos de ordenamiento permitidos
      */
     abstract protected function getAllowedSortFields(): array;
 
     /**
-     * ✅ HELPER: Validar campo de ordenamiento
+     *  HELPER: Validar campo de ordenamiento
      */
     protected function getSortByRule(): string
     {

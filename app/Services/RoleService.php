@@ -77,7 +77,7 @@ class RoleService
     }
 
     /**
-     * ✅ ULTRA LIMPIO: Las validaciones están en el Model, excepciones manejadas globalmente
+     *  ULTRA LIMPIO: Las validaciones están en el Model, excepciones manejadas globalmente
      */
     public function deleteRole(int $id): array
     {
@@ -89,7 +89,7 @@ class RoleService
             return ResponseHelper::notFound('Rol no encontrado o ha sido eliminado');
         }
 
-        // ✅ Si falla, Model::boot() lanza Exception → Handler global la maneja
+        //  Si falla, Model::boot() lanza Exception → Handler global la maneja
         $deletedRole = $this->roleRepository->softDelete($id);
         $deletedRoleDTO = RoleMapper::modelToDeletedDTO($deletedRole);
 
@@ -99,7 +99,7 @@ class RoleService
     }
 
     /**
-     * ✅ ULTRA LIMPIO: Model valida, Handler global maneja excepciones
+     *  ULTRA LIMPIO: Model valida, Handler global maneja excepciones
      */
     public function forceDeleteRole(int $id): array
     {
@@ -113,7 +113,7 @@ class RoleService
 
         $roleName = $role->name;
 
-        // ✅ Si falla, Model::boot() lanza Exception → Handler global la maneja
+        //  Si falla, Model::boot() lanza Exception → Handler global la maneja
         $deletedRole = $this->roleRepository->forceDelete($id);
         $deletedRoleDTO = RoleMapper::modelToDeletedDTO($deletedRole);
 

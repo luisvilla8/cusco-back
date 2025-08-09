@@ -89,7 +89,7 @@ class TransactionDetail extends Model
         'deleted_at' => 'datetime',
     ];
 
-    // ✅ RELACIONES
+    //  RELACIONES
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
@@ -100,7 +100,7 @@ class TransactionDetail extends Model
         return $this->belongsTo(Transaction::class);
     }
 
-    // ✅ SCOPES
+    //  SCOPES
     public function scopeActive(Builder $query): Builder
     {
         return $query->whereNull('deleted_at');
@@ -200,7 +200,7 @@ class TransactionDetail extends Model
         return $query->orderBySubtotal('desc')->limit($limit);
     }
 
-    // ✅ ACCESSORS
+    //  ACCESSORS
     public function getSubtotalAttribute(): float
     {
         return round($this->price * $this->quantity, 2);
@@ -286,7 +286,7 @@ class TransactionDetail extends Model
         return $this->price_difference_from_base > 0;
     }
 
-    // ✅ MÉTODOS DE NEGOCIO
+    //  MÉTODOS DE NEGOCIO
     public function isActive(): bool
     {
         return is_null($this->deleted_at);
@@ -352,7 +352,7 @@ class TransactionDetail extends Model
         return $this->price > 0;
     }
 
-    // ✅ MÉTODOS ESTÁTICOS DE UTILIDAD
+    //  MÉTODOS ESTÁTICOS DE UTILIDAD
     public static function getTotalByProduct(int $productId): float
     {
         return static::active()
@@ -395,13 +395,13 @@ class TransactionDetail extends Model
         ]);
     }
 
-    // ✅ VALIDACIONES EN EVENTOS DEL MODELO
+    //  VALIDACIONES EN EVENTOS DEL MODELO
     protected static function boot()
     {
         parent::boot();
 
         static::creating(function ($transactionDetail) {
-            // ✅ SOLO VALIDACIONES - NO MANEJO DE STOCK
+            //  SOLO VALIDACIONES - NO MANEJO DE STOCK
             if (!$transactionDetail->product_id) {
                 throw new \InvalidArgumentException('Product ID is required');
             }
@@ -416,7 +416,7 @@ class TransactionDetail extends Model
         });
 
         static::updating(function ($transactionDetail) {
-            // ✅ SOLO VALIDACIONES EN UPDATE
+            //  SOLO VALIDACIONES EN UPDATE
             if ($transactionDetail->quantity <= 0) {
                 throw new \InvalidArgumentException('Quantity must be greater than 0');
             }
@@ -427,7 +427,7 @@ class TransactionDetail extends Model
         });
 
         static::deleting(function ($transactionDetail) {
-            // ✅ NO MANEJAR STOCK AQUÍ - SE MANEJA EN TRANSACTION
+            //  NO MANEJAR STOCK AQUÍ - SE MANEJA EN TRANSACTION
         });
     }
 }

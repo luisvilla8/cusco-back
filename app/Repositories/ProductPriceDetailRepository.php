@@ -27,7 +27,7 @@ class ProductPriceDetailRepository
     {
         $query = $this->model->active()->with(['product', 'zone']);
 
-        // ✅ FILTRO POR ZONAS PERMITIDAS (para vendedores)
+        //  FILTRO POR ZONAS PERMITIDAS (para vendedores)
         if ($allowedZoneIds !== null) {
             $query->whereIn('zone_id', $allowedZoneIds);
         }
@@ -58,7 +58,7 @@ class ProductPriceDetailRepository
         $sortBy = $filters['sort_by'] ?? 'id';
         $sortOrder = $filters['sort_order'] ?? 'desc';
 
-        // ✅ ORDENAMIENTO POR RELACIONES
+        //  ORDENAMIENTO POR RELACIONES
         switch ($sortBy) {
             case 'product_name':
                 $query->join('products', 'product_price_details.product_id', '=', 'products.id')
@@ -92,7 +92,7 @@ class ProductPriceDetailRepository
     }
 
     /**
-     * ✅ CREAR PRECIOS MASIVOS - RESTAURAR SOFT DELETED
+     *  CREAR PRECIOS MASIVOS - RESTAURAR SOFT DELETED
      */
     public function createMassivePrices(int $productId, array $prices): array
     {
@@ -111,14 +111,14 @@ class ProductPriceDetailRepository
                 'errors' => [],
             ];
 
-            // ✅ PROCESAR PRECIOS ESPECIFICADOS
+            //  PROCESAR PRECIOS ESPECIFICADOS
             $specifiedZoneIds = [];
             foreach ($prices as $priceData) {
                 try {
                     $zoneId = $priceData['zone_id'];
                     $specifiedZoneIds[] = $zoneId;
 
-                    // ✅ BUSCAR INCLUYENDO SOFT DELETED
+                    //  BUSCAR INCLUYENDO SOFT DELETED
                     $existing = $this->model->withTrashed()
                                            ->where('product_id', $productId)
                                            ->where('zone_id', $zoneId)
@@ -126,7 +126,7 @@ class ProductPriceDetailRepository
 
                     if ($existing) {
                         if ($existing->trashed()) {
-                            // ✅ RESTAURAR Y ACTUALIZAR
+                            //  RESTAURAR Y ACTUALIZAR
                             $existing->restore();
                             $existing->update(['price' => $priceData['price']]);
                             $results['created'][] = $existing->fresh(['product', 'zone']);
@@ -138,7 +138,7 @@ class ProductPriceDetailRepository
                                 'new_price' => $priceData['price']
                             ]);
                         } else {
-                            // ✅ YA EXISTE ACTIVO: Omitir
+                            //  YA EXISTE ACTIVO: Omitir
                             $results['skipped'][] = [
                                 'zone_id' => $zoneId,
                                 'zone_name' => Zone::find($zoneId)?->name ?? 'Zona desconocida',
@@ -148,7 +148,7 @@ class ProductPriceDetailRepository
                             ];
                         }
                     } else {
-                        // ✅ NO EXISTE: Crear nuevo
+                        //  NO EXISTE: Crear nuevo
                         $newPrice = $this->model->create([
                             'product_id' => $productId,
                             'zone_id' => $zoneId,
@@ -179,7 +179,7 @@ class ProductPriceDetailRepository
                 }
             }
 
-            // ✅ CREAR/RESTAURAR PRECIOS POR DEFECTO PARA ZONAS FALTANTES
+            //  CREAR/RESTAURAR PRECIOS POR DEFECTO PARA ZONAS FALTANTES
             $missingZones = $allZones->whereNotIn('id', $specifiedZoneIds);
 
             foreach ($missingZones as $zone) {
@@ -191,7 +191,7 @@ class ProductPriceDetailRepository
 
                     if ($existing) {
                         if ($existing->trashed()) {
-                            // ✅ RESTAURAR CON PRECIO POR DEFECTO
+                            //  RESTAURAR CON PRECIO POR DEFECTO
                             $existing->restore();
                             $existing->update(['price' => $product->price]);
                             $results['created'][] = $existing->fresh(['product', 'zone']);
@@ -203,7 +203,7 @@ class ProductPriceDetailRepository
                                 'price' => $product->price
                             ]);
                         } else {
-                            // ✅ YA EXISTE ACTIVO: Omitir
+                            //  YA EXISTE ACTIVO: Omitir
                             $results['skipped'][] = [
                                 'zone_id' => $zone->id,
                                 'zone_name' => $zone->name,
@@ -212,7 +212,7 @@ class ProductPriceDetailRepository
                             ];
                         }
                     } else {
-                        // ✅ NO EXISTE: Crear nuevo
+                        //  NO EXISTE: Crear nuevo
                         $newPrice = $this->model->create([
                             'product_id' => $productId,
                             'zone_id' => $zone->id,
@@ -249,7 +249,7 @@ class ProductPriceDetailRepository
     }
 
     /**
-     * ✅ NUEVO: ACTUALIZAR PRECIOS MASIVOS
+     *  NUEVO: ACTUALIZAR PRECIOS MASIVOS
      */
     public function updateMassivePrices(int $productId, array $prices): array
     {
@@ -304,7 +304,7 @@ class ProductPriceDetailRepository
     }
 
     /**
-     * ✅ OBTENER PRECIOS POR ZONAS DE UN PRODUCTO
+     *  OBTENER PRECIOS POR ZONAS DE UN PRODUCTO
      */
     public function getProductZonePrices(int $productId, ?array $allowedZoneIds = null): array
     {
@@ -356,11 +356,11 @@ class ProductPriceDetailRepository
     }
 
     /**
-     * ✅ NUEVO: OBTENER PRECIOS AGRUPADOS POR PRODUCTO CON PAGINACIÓN
+     *  NUEVO: OBTENER PRECIOS AGRUPADOS POR PRODUCTO CON PAGINACIÓN
      */
     public function getAllActiveGroupedByProduct(array $filters, ?array $allowedZoneIds = null): LengthAwarePaginator
     {
-        // ✅ OBTENER PRODUCTOS QUE TIENEN PRECIOS (CON FILTROS)
+        //  OBTENER PRODUCTOS QUE TIENEN PRECIOS (CON FILTROS)
         $productsQuery = Product::active()
             ->whereHas('productPriceDetails', function ($query) use ($allowedZoneIds) {
                 if ($allowedZoneIds !== null) {
@@ -368,7 +368,7 @@ class ProductPriceDetailRepository
                 }
             });
 
-        // ✅ APLICAR FILTROS DE BÚSQUEDA
+        //  APLICAR FILTROS DE BÚSQUEDA
         if (!empty($filters['search'])) {
             $search = $filters['search'];
             $productsQuery->where(function ($q) use ($search) {
@@ -381,16 +381,16 @@ class ProductPriceDetailRepository
             $productsQuery->where('id', $filters['product_id']);
         }
 
-        // ✅ ORDENAMIENTO
+        //  ORDENAMIENTO
         $sortBy = $filters['sort_by'] ?? 'id';
         $sortOrder = $filters['sort_order'] ?? 'desc';
         
         $productsQuery->orderBy($sortBy, $sortOrder);
 
-        // ✅ PAGINAR PRODUCTOS
+        //  PAGINAR PRODUCTOS
         $paginatedProducts = $productsQuery->paginate($filters['per_page'] ?? 15);
 
-        // ✅ CARGAR PRECIOS PARA CADA PRODUCTO PAGINADO
+        //  CARGAR PRECIOS PARA CADA PRODUCTO PAGINADO
         $productIds = $paginatedProducts->pluck('id')->toArray();
         
         $allZones = Zone::active()->get();
@@ -398,7 +398,7 @@ class ProductPriceDetailRepository
             $allZones = $allZones->whereIn('id', $allowedZoneIds);
         }
 
-        // ✅ OBTENER TODOS LOS PRECIOS DE LOS PRODUCTOS PAGINADOS
+        //  OBTENER TODOS LOS PRECIOS DE LOS PRODUCTOS PAGINADOS
         $priceDetails = $this->model->active()
             ->whereIn('product_id', $productIds)
             ->when($allowedZoneIds, function ($query, $zoneIds) {
@@ -408,14 +408,14 @@ class ProductPriceDetailRepository
             ->get()
             ->groupBy('product_id');
 
-        // ✅ TRANSFORMAR DATOS
+        //  TRANSFORMAR DATOS
         $transformedItems = $paginatedProducts->map(function ($product) use ($priceDetails, $allZones, $filters) {
             $productPrices = $priceDetails->get($product->id, collect());
             
             return $this->buildProductZonePricesData($product, $productPrices, $allZones, $filters);
         });
 
-        // ✅ CREAR NUEVA INSTANCIA DE PAGINACIÓN CON DATOS TRANSFORMADOS
+        //  CREAR NUEVA INSTANCIA DE PAGINACIÓN CON DATOS TRANSFORMADOS
         $transformedPaginator = new \Illuminate\Pagination\LengthAwarePaginator(
             $transformedItems,
             $paginatedProducts->total(),
@@ -431,7 +431,7 @@ class ProductPriceDetailRepository
     }
 
     /**
-     * ✅ CONSTRUIR DATOS DE PRODUCTO CON PRECIOS POR ZONA
+     *  CONSTRUIR DATOS DE PRODUCTO CON PRECIOS POR ZONA
      */
     private function buildProductZonePricesData($product, $productPrices, $allZones, $filters = []): array
     {
@@ -441,7 +441,7 @@ class ProductPriceDetailRepository
         foreach ($allZones as $zone) {
             $existingPrice = $existingPrices->get($zone->id);
             
-            // ✅ APLICAR FILTRO POR ZONA SI EXISTE
+            //  APLICAR FILTRO POR ZONA SI EXISTE
             if (!empty($filters['zone_id']) && $zone->id != $filters['zone_id']) {
                 continue;
             }
@@ -459,7 +459,7 @@ class ProductPriceDetailRepository
                     'updated_at' => $existingPrice->updated_at?->format('Y-m-d H:i:s'),
                 ];
             } else {
-                // ✅ ZONA SIN PRECIO CONFIGURADO
+                //  ZONA SIN PRECIO CONFIGURADO
                 $zonePrices[] = [
                     'id' => null,
                     'zone_id' => $zone->id,
@@ -523,7 +523,7 @@ class ProductPriceDetailRepository
     }
 
     /**
-     * ✅ OBTENER PRECIOS POR PRODUCTO ID
+     *  OBTENER PRECIOS POR PRODUCTO ID
      */
     public function getByProductId(int $productId): \Illuminate\Database\Eloquent\Collection
     {
@@ -534,7 +534,7 @@ class ProductPriceDetailRepository
     }
 
     /**
-     * ✅ LIMPIAR TODOS LOS PRECIOS DE UN PRODUCTO
+     *  LIMPIAR TODOS LOS PRECIOS DE UN PRODUCTO
      */
     public function clearProductPrices(int $productId): int
     {

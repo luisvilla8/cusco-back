@@ -118,7 +118,7 @@ class ZoneRepository
             $zone = $this->findWithTrashedAndCount($id);
             if (!$zone) return null;
             
-            // ✅ CORRECCIÓN: Crear un array en lugar de modificar propiedades
+            //  CORRECCIÓN: Crear un array en lugar de modificar propiedades
             $snapshotData = [
                 'id' => $zone->id,
                 'name' => $zone->name,
@@ -133,7 +133,7 @@ class ZoneRepository
             
             $zone->forceDelete();
             
-            // ✅ CREAR NUEVO OBJETO CON LOS DATOS
+            //  CREAR NUEVO OBJETO CON LOS DATOS
             $snapshot = new Zone();
             $snapshot->fill($snapshotData);
             $snapshot->setAttribute('product_price_details_count', $snapshotData['product_price_details_count']);

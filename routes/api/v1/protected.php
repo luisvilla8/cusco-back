@@ -56,7 +56,7 @@ Route::prefix('roles')->name('roles.')->middleware('validate.numeric.id')->group
     Route::put('{id}', [RoleController::class, 'update'])->name('update');
     Route::delete('{id}', [RoleController::class, 'destroy'])->name('destroy');
 
-    Route::delete('{id}/force', [RoleController::class, 'forceDelete'])->name('force-delete'); // ✅ NUEVO: Eliminado físico
+    Route::delete('{id}/force', [RoleController::class, 'forceDelete'])->name('force-delete'); //  NUEVO: Eliminado físico
 });
 
 // UNIDADES DE MEDIDA 
@@ -69,7 +69,7 @@ Route::prefix('measure-types')->name('measure-types.')->middleware('validate.num
     Route::put('{id}', [MeasureTypeController::class, 'update'])->name('update');
     Route::delete('{id}', [MeasureTypeController::class, 'destroy'])->name('destroy');
 
-    Route::delete('{id}/force', [MeasureTypeController::class, 'forceDelete'])->name('force-delete'); // ✅ NUEVO: Eliminado físico
+    Route::delete('{id}/force', [MeasureTypeController::class, 'forceDelete'])->name('force-delete'); //  NUEVO: Eliminado físico
 });
 
 // CATEGORÍAS DE PRODUCTOS 
@@ -172,22 +172,22 @@ Route::prefix('transaction-types')->name('transaction-types.')->middleware('vali
 // PRECIOS POR ZONA
 Route::prefix('product-price-details')->name('product-price-details.')->middleware('validate.numeric.id')->group(function () {
     Route::get('list', [ProductPriceDetailController::class, 'list'])->name('list'); // Para dropdowns
-    Route::get('flat', [ProductPriceDetailController::class, 'flat'])->name('flat')  // ✅ NUEVO: Lista plana
+    Route::get('flat', [ProductPriceDetailController::class, 'flat'])->name('flat')  //  NUEVO: Lista plana
         ->withoutMiddleware('validate.numeric.id');
     
-    // ✅ GESTIÓN MASIVA
+    //  GESTIÓN MASIVA
     Route::post('massive', [ProductPriceDetailController::class, 'storeMassive'])->name('store-massive')
         ->withoutMiddleware('validate.numeric.id');
     Route::put('massive', [ProductPriceDetailController::class, 'updateMassive'])->name('update-massive')
         ->withoutMiddleware('validate.numeric.id');
 
-    // ✅ POR PRODUCTO
+    //  POR PRODUCTO
     Route::get('product/{productId}/zones', [ProductPriceDetailController::class, 'getProductZonePrices'])
         ->name('product-zones')->where('productId', '[0-9]+');
     Route::delete('product/{productId}/clear', [ProductPriceDetailController::class, 'clearProductPrices'])
         ->name('clear-product-prices')->where('productId', '[0-9]+');
 
-    // ✅ CRUD ESTÁNDAR
+    //  CRUD ESTÁNDAR
     Route::get('/', [ProductPriceDetailController::class, 'index'])->name('index'); // 👈 AGRUPADO POR PRODUCTO
     Route::get('{id}', [ProductPriceDetailController::class, 'show'])->name('show');
     Route::put('{id}', [ProductPriceDetailController::class, 'update'])->name('update');
@@ -200,7 +200,7 @@ Route::prefix('trips')->name('trips.')->group(function () {
     Route::get('list', [TripController::class, 'list'])->name('list'); // Para dropdowns
     
     Route::get('/', [TripController::class, 'index'])->name('index');
-    Route::post('/', [TripController::class, 'store'])->name('store'); // ✅ SIN MIDDLEWARE RESTRICTIVO
+    Route::post('/', [TripController::class, 'store'])->name('store'); //  SIN MIDDLEWARE RESTRICTIVO
     
     // APLICAR MIDDLEWARE SOLO A RUTAS CON ID
     Route::middleware('validate.numeric.id')->group(function () {
@@ -217,7 +217,7 @@ Route::prefix('trips')->name('trips.')->group(function () {
 Route::prefix('transactions')->name('transactions.')->group(function () {
     Route::get('list', [TransactionController::class, 'list'])->name('list');
     
-    // ✅ RUTAS ESPECIALES SIN MIDDLEWARE ID
+    //  RUTAS ESPECIALES SIN MIDDLEWARE ID
     Route::get('sales', [TransactionController::class, 'sales'])->name('sales');
     Route::get('purchases', [TransactionController::class, 'purchases'])->name('purchases');
     Route::get('pending-delivery', [TransactionController::class, 'pendingDelivery'])->name('pending-delivery');
@@ -227,29 +227,29 @@ Route::prefix('transactions')->name('transactions.')->group(function () {
     Route::get('/', [TransactionController::class, 'index'])->name('index');
     Route::post('/', [TransactionController::class, 'store'])->name('store');
     
-    // ✅ APLICAR MIDDLEWARE SOLO A RUTAS CON ID
+    //  APLICAR MIDDLEWARE SOLO A RUTAS CON ID
     Route::middleware('validate.numeric.id')->group(function () {
         Route::get('{id}', [TransactionController::class, 'show'])->name('show');
         Route::get('{id}/dependencies', [TransactionController::class, 'dependencies'])->name('dependencies');
         
-        // ✅ NUEVA RUTA: Obtener datos para crear devolución
+        //  NUEVA RUTA: Obtener datos para crear devolución
         Route::get('{id}/return-data', [TransactionController::class, 'getReturnData'])->name('return-data');
         
         Route::put('{id}', [TransactionController::class, 'update'])->name('update');
         Route::delete('{id}', [TransactionController::class, 'destroy'])->name('destroy');
         Route::delete('{id}/force', [TransactionController::class, 'forceDelete'])->name('force-delete');
         
-        // ✅ ACCIONES ESPECÍFICAS DE TRANSACCIONES
+        //  ACCIONES ESPECÍFICAS DE TRANSACCIONES
         Route::patch('{id}/deliver', [TransactionController::class, 'markAsDelivered'])->name('deliver');
         Route::patch('{id}/return', [TransactionController::class, 'markAsReturned'])->name('return');
         Route::patch('{id}/cancel', [TransactionController::class, 'cancelTransaction'])->name('cancel');
         Route::post('{id}/add-payment', [TransactionController::class, 'addPayment'])->name('add-payment');
         
-        // ✅ NUEVA RUTA: Verificar si se puede cancelar
+        //  NUEVA RUTA: Verificar si se puede cancelar
         Route::get('{id}/can-cancel', [TransactionController::class, 'canCancel'])->name('can-cancel');
     });
     
-    // ✅ RUTAS PARA DEVOLUCIONES ACTIVAS
+    //  RUTAS PARA DEVOLUCIONES ACTIVAS
     Route::post('returns', [TransactionController::class, 'createReturn'])->name('create-return');
     Route::get('returns', [TransactionController::class, 'returns'])->name('returns'); // Solo activas
     Route::get('{id}/returns', [TransactionController::class, 'getTransactionReturns'])

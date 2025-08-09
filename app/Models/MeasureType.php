@@ -60,13 +60,13 @@ class MeasureType extends Model
         'deleted_at' => 'datetime',
     ];
 
-    // ✅ RELACIONES
+    //  RELACIONES
     public function products(): HasMany
     {
         return $this->hasMany(Product::class);
     }
 
-    // ✅ SCOPES
+    //  SCOPES
     public function scopeActive(Builder $query): Builder
     {
         return $query->whereNull('deleted_at');
@@ -95,7 +95,7 @@ class MeasureType extends Model
         return $query->where('symbol', 'LIKE', "%{$symbol}%");
     }
 
-    // ✅ ACCESSORS
+    //  ACCESSORS
     public function getDisplayNameAttribute(): string
     {
         return "{$this->name} ({$this->symbol})";
@@ -106,7 +106,7 @@ class MeasureType extends Model
         return $this->products_count ?? $this->products()->count();
     }
 
-    // ✅ MÉTODOS DE NEGOCIO
+    //  MÉTODOS DE NEGOCIO
     public function hasProducts(): bool
     {
         return $this->products()->exists();
@@ -117,7 +117,7 @@ class MeasureType extends Model
         return $this->products()->count() === 0;
     }
 
-    // ✅ VALIDACIONES EN EVENTOS DEL MODELO
+    //  VALIDACIONES EN EVENTOS DEL MODELO
     protected static function boot()
     {
         parent::boot();

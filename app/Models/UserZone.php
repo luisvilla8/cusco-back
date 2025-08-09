@@ -73,7 +73,7 @@ class UserZone extends Model
         'deleted_at' => 'datetime',
     ];
 
-    // ✅ RELACIONES
+    //  RELACIONES
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
@@ -84,7 +84,7 @@ class UserZone extends Model
         return $this->belongsTo(Zone::class);
     }
 
-    // ✅ SCOPES
+    //  SCOPES
     public function scopeActive(Builder $query): Builder
     {
         return $query->whereNull('deleted_at');
@@ -161,7 +161,7 @@ class UserZone extends Model
                     ->withActiveZones();
     }
 
-    // ✅ ACCESSORS
+    //  ACCESSORS
     public function getDisplayNameAttribute(): string
     {
         return "{$this->user?->name} - {$this->zone?->name}";
@@ -216,7 +216,7 @@ class UserZone extends Model
         return "{$user} asignado a {$zone} - {$status}";
     }
 
-    // ✅ MÉTODOS DE NEGOCIO
+    //  MÉTODOS DE NEGOCIO
     public function isActive(): bool
     {
         return is_null($this->deleted_at);
@@ -252,7 +252,7 @@ class UserZone extends Model
         return $this->user_id === $userId && $this->zone_id === $zoneId;
     }
 
-    // ✅ MÉTODOS ESTÁTICOS DE UTILIDAD
+    //  MÉTODOS ESTÁTICOS DE UTILIDAD
     public static function findByUserAndZone(int $userId, int $zoneId): ?self
     {
         return static::active()
@@ -307,7 +307,7 @@ class UserZone extends Model
         return $assignment->delete();
     }
 
-    // ✅ VALIDACIONES EN EVENTOS DEL MODELO
+    //  VALIDACIONES EN EVENTOS DEL MODELO
     protected static function boot()
     {
         parent::boot();

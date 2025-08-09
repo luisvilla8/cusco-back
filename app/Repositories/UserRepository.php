@@ -86,7 +86,7 @@ class UserRepository
                 'zone_ids_value' => $data['zone_ids'] ?? 'not_present'
             ]);
 
-            // ✅ EXTRAER zone_ids ANTES de actualizar usuario
+            //  EXTRAER zone_ids ANTES de actualizar usuario
             $shouldUpdateZones = array_key_exists('zone_ids', $data);
             $zoneIds = $data['zone_ids'] ?? null;
             unset($data['zone_ids']);
@@ -103,7 +103,7 @@ class UserRepository
                 $user->update($data);
             }
             
-            // ✅ GESTIÓN INTELIGENTE DE ZONAS CON SOFT DELETES
+            //  GESTIÓN INTELIGENTE DE ZONAS CON SOFT DELETES
             if ($shouldUpdateZones) {
                 $this->updateUserZonesIntelligently($user->id, $zoneIds ?? []);
             }
@@ -114,7 +114,7 @@ class UserRepository
     }
 
     /**
-     * ✅ MÉTODO INTELIGENTE PARA MANEJAR ZONAS CON SOFT DELETES
+     *  MÉTODO INTELIGENTE PARA MANEJAR ZONAS CON SOFT DELETES
      */
     private function updateUserZonesIntelligently(int $userId, array $newZoneIds): void
     {
@@ -123,7 +123,7 @@ class UserRepository
             'new_zone_ids' => $newZoneIds
         ]);
 
-        // ✅ 1. OBTENER todas las asignaciones (incluidas las eliminadas)
+        //  1. OBTENER todas las asignaciones (incluidas las eliminadas)
         $allUserZones = UserZone::withTrashed()
             ->where('user_id', $userId)
             ->get()
@@ -139,12 +139,12 @@ class UserRepository
             })->toArray()
         ]);
 
-        // ✅ 2. PROCESAR cada zona nueva
+        //  2. PROCESAR cada zona nueva
         foreach ($newZoneIds as $zoneId) {
             $existingAssignment = $allUserZones->get($zoneId);
             
             if ($existingAssignment) {
-                // ✅ EXISTE: Si está eliminada, restaurarla
+                //  EXISTE: Si está eliminada, restaurarla
                 if ($existingAssignment->deleted_at) {
                     $existingAssignment->restore();
                     Log::info('Restored zone assignment', [
@@ -153,7 +153,7 @@ class UserRepository
                         'assignment_id' => $existingAssignment->id
                     ]);
                 } else {
-                    // ✅ YA ESTÁ ACTIVA: No hacer nada
+                    //  YA ESTÁ ACTIVA: No hacer nada
                     Log::info('Zone assignment already active', [
                         'user_id' => $userId,
                         'zone_id' => $zoneId,
@@ -161,7 +161,7 @@ class UserRepository
                     ]);
                 }
             } else {
-                // ✅ NO EXISTE: Crear nueva asignación
+                //  NO EXISTE: Crear nueva asignación
                 $newAssignment = UserZone::create([
                     'user_id' => $userId,
                     'zone_id' => $zoneId
@@ -174,7 +174,7 @@ class UserRepository
             }
         }
 
-        // ✅ 3. SOFT DELETE zonas que ya no están en la nueva lista
+        //  3. SOFT DELETE zonas que ya no están en la nueva lista
         $currentActiveZones = UserZone::where('user_id', $userId)
             ->whereNull('deleted_at')
             ->whereNotIn('zone_id', $newZoneIds)
@@ -189,7 +189,7 @@ class UserRepository
             ]);
         }
 
-        // ✅ 4. LOG FINAL STATE
+        //  4. LOG FINAL STATE
         $finalActiveZones = UserZone::where('user_id', $userId)
             ->whereNull('deleted_at')
             ->pluck('zone_id')
@@ -202,7 +202,7 @@ class UserRepository
     }
 
     /**
-     * ✅ SOFT DELETE MEJORADO
+     *  SOFT DELETE MEJORADO
      */
     public function delete(int $id): bool
     {
@@ -219,7 +219,7 @@ class UserRepository
                 'current_zones_count' => $user->zones()->count()
             ]);
 
-            // ✅ El modelo User maneja automáticamente UserZones en el evento deleting
+            //  El modelo User maneja automáticamente UserZones en el evento deleting
             $result = $user->delete();
 
             if ($result) {
@@ -239,11 +239,11 @@ class UserRepository
     }
 
     /**
-     * ✅ FORCE DELETE MEJORADO
+     *  FORCE DELETE MEJORADO
      */
     public function forceDelete(int $id): bool
     {
-        // ✅ Buscar usuario incluyendo soft deleted
+        //  Buscar usuario incluyendo soft deleted
         $user = $this->model->withTrashed()->find($id);
         if (!$user) {
             Log::warning('Attempted to force delete non-existent user', ['user_id' => $id]);
@@ -258,10 +258,10 @@ class UserRepository
                 'total_zones_count' => UserZone::withTrashed()->where('user_id', $user->id)->count()
             ]);
 
-            // ✅ Marcar que está siendo force deleted para el evento
+            //  Marcar que está siendo force deleted para el evento
             $user->forceDeleting = true;
 
-            // ✅ El modelo User maneja automáticamente UserZones en el evento forceDeleting
+            //  El modelo User maneja automáticamente UserZones en el evento forceDeleting
             $result = $user->forceDelete();
 
             if ($result) {
@@ -281,7 +281,7 @@ class UserRepository
     }
 
     /**
-     * ✅ NUEVO: RESTAURAR USUARIO
+     *  NUEVO: RESTAURAR USUARIO
      */
     public function restore(int $id): ?User
     {
@@ -298,7 +298,7 @@ class UserRepository
                 'deleted_at' => $user->deleted_at?->format('Y-m-d H:i:s')
             ]);
 
-            // ✅ El modelo User maneja automáticamente UserZones en el evento restoring
+            //  El modelo User maneja automáticamente UserZones en el evento restoring
             $result = $user->restore();
 
             if ($result) {

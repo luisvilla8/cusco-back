@@ -29,7 +29,7 @@ class UpdateUserRequest extends FormRequest
             'password' => 'sometimes|nullable|string|min:6',
             'phone' => 'nullable|string|max:20',
             'role_id' => 'sometimes|exists:roles,id',
-            // ✅ ASEGURAR que zone_ids sea opcional y array
+            //  ASEGURAR que zone_ids sea opcional y array
             'zone_ids' => 'nullable|array',
             'zone_ids.*' => 'exists:zones,id',
         ];
@@ -53,7 +53,7 @@ class UpdateUserRequest extends FormRequest
     }
 
     /**
-     * ✅ PREPARAR datos para asegurar que zone_ids esté siempre presente si se envía
+     *  PREPARAR datos para asegurar que zone_ids esté siempre presente si se envía
      */
     protected function prepareForValidation()
     {

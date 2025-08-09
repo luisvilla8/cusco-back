@@ -13,7 +13,7 @@ class RegisterRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return true; // ✅ Público - cualquiera puede registrarse
+        return true; //  Público - cualquiera puede registrarse
     }
 
     /**

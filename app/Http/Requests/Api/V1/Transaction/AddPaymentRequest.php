@@ -77,7 +77,7 @@ class AddPaymentRequest extends FormRequest
     public function withValidator($validator)
     {
         $validator->after(function ($validator) {
-            // ✅ VALIDAR QUE EL PAYMENT METHOD ESTÉ ACTIVO
+            //  VALIDAR QUE EL PAYMENT METHOD ESTÉ ACTIVO
             $paymentMethodId = $this->input('payment_method_id');
             if ($paymentMethodId) {
                 $paymentMethod = PaymentMethod::find($paymentMethodId);
@@ -86,7 +86,7 @@ class AddPaymentRequest extends FormRequest
                 }
             }
 
-            // ✅ VALIDAR QUE EL MONTO NO SEA EXCESIVO (opcional)
+            //  VALIDAR QUE EL MONTO NO SEA EXCESIVO (opcional)
             $amountPaid = $this->input('amount_paid');
             if ($amountPaid && $amountPaid > 1000000) {
                 $validator->errors()->add('amount_paid', 'El monto del pago es demasiado alto. Contacte al administrador.');
@@ -99,7 +99,7 @@ class AddPaymentRequest extends FormRequest
      */
     protected function prepareForValidation()
     {
-        // ✅ LIMPIAR Y NORMALIZAR DATOS
+        //  LIMPIAR Y NORMALIZAR DATOS
         if ($this->has('amount_paid')) {
             $this->merge([
                 'amount_paid' => (float) $this->input('amount_paid')

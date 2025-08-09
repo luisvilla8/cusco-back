@@ -53,7 +53,7 @@ class Role extends Model
     ];
 
     /**
-     * ✅ RELACIÓN: Usuarios con este rol
+     *  RELACIÓN: Usuarios con este rol
      */
     public function users(): HasMany
     {
@@ -61,7 +61,7 @@ class Role extends Model
     }
 
     /**
-     * ✅ SCOPE: Roles activos
+     *  SCOPE: Roles activos
      */
     public function scopeActive($query)
     {
@@ -133,7 +133,7 @@ class Role extends Model
     }
 
     /**
-     * ✅ AGREGAR EVENTO creating PARA AUTO-GENERAR CÓDIGO
+     *  AGREGAR EVENTO creating PARA AUTO-GENERAR CÓDIGO
      */
     protected static function boot()
     {

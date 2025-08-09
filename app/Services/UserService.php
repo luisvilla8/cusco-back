@@ -134,7 +134,7 @@ class UserService
     }
 
     /**
-     * ✅ NUEVO: RESTAURAR USUARIO
+     *  NUEVO: RESTAURAR USUARIO
      */
     public function restoreUser(int $id): array
     {

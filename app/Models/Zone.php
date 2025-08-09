@@ -72,7 +72,7 @@ class Zone extends Model
         'deleted_at' => 'datetime',
     ];
 
-    // ✅ RELACIONES
+    //  RELACIONES
     public function userZones(): HasMany
     {
         return $this->hasMany(UserZone::class);
@@ -106,7 +106,7 @@ class Zone extends Model
         return $this->hasMany(Egress::class);
     }
 
-    // ✅ SCOPES
+    //  SCOPES
     public function scopeActive(Builder $query): Builder
     {
         return $query->whereNull('deleted_at');
@@ -132,7 +132,7 @@ class Zone extends Model
                      ->orderBy('product_price_details_count', $order);
     }
 
-    // ✅ MÉTODOS DE NEGOCIO
+    //  MÉTODOS DE NEGOCIO
     public function isActive(): bool
     {
         return is_null($this->deleted_at);
@@ -140,7 +140,7 @@ class Zone extends Model
 
     public function hasUsers(): bool
     {
-        // ✅ USAR SOLO userZones() que ya está bien definida
+        //  USAR SOLO userZones() que ya está bien definida
         return $this->userZones()->exists();
     }
 
@@ -212,7 +212,7 @@ class Zone extends Model
         return static::active()->byCode($code)->first();
     }
 
-    // ✅ VALIDACIONES EN EVENTOS DEL MODELO
+    //  VALIDACIONES EN EVENTOS DEL MODELO
     protected static function boot()
     {
         parent::boot();

@@ -109,7 +109,7 @@ class Trip extends Model
     protected $fillable = [
         'agent_id',
         'zone_id',
-        'user_id',        // ✅ NUEVO CAMPO
+        'user_id',        //  NUEVO CAMPO
         'name',
         'description',
         'travel_expenses',
@@ -129,7 +129,7 @@ class Trip extends Model
         'deleted_at' => 'datetime',
     ];
 
-    // ✅ RELACIONES
+    //  RELACIONES
     public function agent(): BelongsTo
     {
         return $this->belongsTo(Agent::class);
@@ -141,7 +141,7 @@ class Trip extends Model
     }
 
     /**
-     * ✅ NUEVA RELACIÓN: Usuario que creó/maneja el trip
+     *  NUEVA RELACIÓN: Usuario que creó/maneja el trip
      */
     public function user(): BelongsTo
     {
@@ -158,7 +158,7 @@ class Trip extends Model
         return $this->hasMany(Egress::class);
     }
 
-    // ✅ SCOPES ACTUALIZADOS
+    //  SCOPES ACTUALIZADOS
     public function scopeActive(Builder $query): Builder
     {
         return $query->whereNull('deleted_at');
@@ -180,7 +180,7 @@ class Trip extends Model
     }
 
     /**
-     * ✅ NUEVO SCOPE: Filtrar por usuario
+     *  NUEVO SCOPE: Filtrar por usuario
      */
     public function scopeByUser(Builder $query, int $userId): Builder
     {
@@ -188,7 +188,7 @@ class Trip extends Model
     }
 
     /**
-     * ✅ NUEVO SCOPE: Trips del usuario autenticado
+     *  NUEVO SCOPE: Trips del usuario autenticado
      */
     public function scopeOwnTrips(Builder $query): Builder
     {
@@ -217,13 +217,13 @@ class Trip extends Model
         });
     }
 
-    // ✅ SCOPES CON RELACIONES ACTUALIZADOS
+    //  SCOPES CON RELACIONES ACTUALIZADOS
     public function scopeWithRelations(Builder $query): Builder
     {
         return $query->with([
             'agent:id,name,code',
             'zone:id,name,code',
-            'user:id,name,code,email'  // ✅ AGREGAR user
+            'user:id,name,code,email'  //  AGREGAR user
         ]);
     }
 
@@ -260,7 +260,7 @@ class Trip extends Model
                     ->orderBy('duration_days', $direction);
     }
 
-    // ✅ ACCESSORS ACTUALIZADOS
+    //  ACCESSORS ACTUALIZADOS
     public function getFormattedTotalAttribute(): string
     {
         return "S/ " . number_format($this->total, 2);
@@ -297,7 +297,7 @@ class Trip extends Model
     }
 
     /**
-     * ✅ NUEVO ACCESSOR: Nombre del usuario
+     *  NUEVO ACCESSOR: Nombre del usuario
      */
     public function getUserNameAttribute(): string
     {
@@ -305,7 +305,7 @@ class Trip extends Model
     }
 
     /**
-     * ✅ NUEVO ACCESSOR: Email del usuario
+     *  NUEVO ACCESSOR: Email del usuario
      */
     public function getUserEmailAttribute(): string
     {
@@ -430,14 +430,14 @@ class Trip extends Model
         ];
     }
 
-    // ✅ MÉTODOS DE NEGOCIO ACTUALIZADOS
+    //  MÉTODOS DE NEGOCIO ACTUALIZADOS
     public function isActive(): bool
     {
         return is_null($this->deleted_at);
     }
 
     /**
-     * ✅ VERIFICAR SI EL USUARIO PUEDE ACCEDER AL TRIP - SIN LOAD()
+     *  VERIFICAR SI EL USUARIO PUEDE ACCEDER AL TRIP - SIN LOAD()
      */
     public function canUserAccess(User $user): bool
     {
@@ -456,7 +456,7 @@ class Trip extends Model
     }
 
     /**
-     * ✅ VERIFICAR SI EL USUARIO PUEDE EDITAR EL TRIP - SIN LOAD()
+     *  VERIFICAR SI EL USUARIO PUEDE EDITAR EL TRIP - SIN LOAD()
      */
     public function canUserEdit(User $user): bool
     {
@@ -468,7 +468,7 @@ class Trip extends Model
         return $user->role && in_array($user->role->name, ['Administrador', 'Super Admin']);
     }
 
-    // ✅ MÉTODOS ESTÁTICOS ACTUALIZADOS
+    //  MÉTODOS ESTÁTICOS ACTUALIZADOS
     public static function createTrip(array $data): self
     {
         // Validar datos requeridos
@@ -487,7 +487,7 @@ class Trip extends Model
     }
 
     /**
-     * ✅ NUEVO: Obtener trips por usuario con filtros
+     *  NUEVO: Obtener trips por usuario con filtros
      */
     public static function getUserTrips(int $userId, array $filters = []): \Illuminate\Database\Eloquent\Builder
     {
@@ -521,7 +521,7 @@ class Trip extends Model
         return $query->withRelations()->orderByDateStart();
     }
 
-    // ✅ VALIDACIONES EN EVENTOS DEL MODELO ACTUALIZADOS
+    //  VALIDACIONES EN EVENTOS DEL MODELO ACTUALIZADOS
     protected static function boot()
     {
         parent::boot();
@@ -532,7 +532,7 @@ class Trip extends Model
                 $trip->code = 'TEMP-' . uniqid() . '-' . now()->format('His');
             }
             
-            // ✅ NO AUTO-ASIGNAR USUARIO AQUÍ - SE HACE EN EL SERVICE
+            //  NO AUTO-ASIGNAR USUARIO AQUÍ - SE HACE EN EL SERVICE
             // La lógica de asignación se maneja en TripService para mayor control
             
             // Establecer valores por defecto
@@ -547,26 +547,26 @@ class Trip extends Model
             // Normalizar datos
             $trip->name = ucwords(trim($trip->name));
             
-            // ✅ VALIDAR QUE SE HAYA ASIGNADO UN USUARIO
+            //  VALIDAR QUE SE HAYA ASIGNADO UN USUARIO
             if (empty($trip->user_id)) {
                 throw new \InvalidArgumentException('El usuario asignado es obligatorio');
             }
         });
 
-        // ✅ CREAR EGRESO SOLO UNA VEZ - DESPUÉS DE CREAR EL TRIP
+        //  CREAR EGRESO SOLO UNA VEZ - DESPUÉS DE CREAR EL TRIP
         static::created(function ($trip) {
             // Actualizar código si es temporal
             if (strpos($trip->code, 'TEMP-') === 0) {
-                // ✅ CARGAR RELACIONES ANTES DE GENERAR CÓDIGO
+                //  CARGAR RELACIONES ANTES DE GENERAR CÓDIGO
                 $trip->load(['agent', 'zone', 'user']);
                 
-                // ✅ ACTUALIZAR SIN TRIGGEAR EVENTOS (para evitar loop)
+                //  ACTUALIZAR SIN TRIGGEAR EVENTOS (para evitar loop)
                 $trip->updateQuietly([
                     'code' => $trip->generateCode()
                 ]);
             }
 
-            // ✅ CREAR EGRESO AUTOMÁTICAMENTE SI HAY travel_expenses - SOLO AQUÍ
+            //  CREAR EGRESO AUTOMÁTICAMENTE SI HAY travel_expenses - SOLO AQUÍ
             if ($trip->travel_expenses > 0) {
                 $trip->createTravelExpenseEgress();
             }
@@ -583,7 +583,7 @@ class Trip extends Model
             ]);
         });
 
-        // ✅ ACTUALIZAR EGRESO CUANDO SE ACTUALIZA EL TRIP
+        //  ACTUALIZAR EGRESO CUANDO SE ACTUALIZA EL TRIP
         static::updated(function ($trip) {
             // Si cambió travel_expenses, actualizar o crear egreso
             if ($trip->wasChanged('travel_expenses')) {
@@ -596,9 +596,9 @@ class Trip extends Model
             }
         });
 
-        // ✅ ELIMINAR EGRESO CUANDO SE ELIMINA EL TRIP (SOFT DELETE) - CORREGIDO
+        //  ELIMINAR EGRESO CUANDO SE ELIMINA EL TRIP (SOFT DELETE) - CORREGIDO
         static::deleting(function ($trip) {
-            // ✅ PARA FORCE DELETE, PERMITIR ELIMINACIÓN SIEMPRE
+            //  PARA FORCE DELETE, PERMITIR ELIMINACIÓN SIEMPRE
             if ($trip->isForceDeleting()) {
                 \Log::warning("Force deleting trip - bypassing dependency checks", [
                     'trip_id' => $trip->id,
@@ -607,7 +607,7 @@ class Trip extends Model
                 return; // No bloquear force delete
             }
 
-            // ✅ PARA SOFT DELETE, VERIFICAR DEPENDENCIAS
+            //  PARA SOFT DELETE, VERIFICAR DEPENDENCIAS
             if (!$trip->canBeDeleted()) {
                 $dependencies = $trip->getDependenciesDetails();
                 
@@ -636,7 +636,7 @@ class Trip extends Model
             $trip->softDeleteTravelExpenseEgress();
         });
 
-        // ✅ ELIMINAR EGRESO PERMANENTEMENTE CUANDO SE HACE FORCE DELETE
+        //  ELIMINAR EGRESO PERMANENTEMENTE CUANDO SE HACE FORCE DELETE
         static::deleted(function ($trip) {
             // Si fue force delete, eliminar permanentemente el egreso
             if ($trip->isForceDeleting()) {
@@ -644,7 +644,7 @@ class Trip extends Model
             }
         });
 
-        // ✅ VALIDACIÓN ANTES DE GUARDAR - SIN CREAR EGRESOS AQUÍ
+        //  VALIDACIÓN ANTES DE GUARDAR - SIN CREAR EGRESOS AQUÍ
         static::saving(function ($trip) {
             // Validar rango de fechas
             if (!$trip->isValidDateRange()) {
@@ -674,7 +674,7 @@ class Trip extends Model
                 }
             }
 
-            // ✅ VALIDAR QUE LOS MODELOS EXISTEN (con imports correctos)
+            //  VALIDAR QUE LOS MODELOS EXISTEN (con imports correctos)
             if (!Agent::find($trip->agent_id)) {
                 throw new \InvalidArgumentException('El agente especificado no existe');
             }
@@ -707,10 +707,10 @@ class Trip extends Model
         });
     }
 
-    // ✅ AGREGAR MÉTODOS FALTANTES QUE SE USAN EN LOS SCOPES Y ACCESSORS
+    //  AGREGAR MÉTODOS FALTANTES QUE SE USAN EN LOS SCOPES Y ACCESSORS
 
     /**
-     * ✅ VALIDAR RANGO DE FECHAS
+     *  VALIDAR RANGO DE FECHAS
      */
     public function isValidDateRange(): bool
     {
@@ -718,7 +718,7 @@ class Trip extends Model
     }
 
     /**
-     * ✅ SCOPES FALTANTES PARA FILTROS DE ESTADO
+     *  SCOPES FALTANTES PARA FILTROS DE ESTADO
      */
     public function scopeUpcoming(Builder $query): Builder
     {
@@ -740,14 +740,14 @@ class Trip extends Model
     }
 
     /**
-     * ✅ SCOPE FALTANTE PARA FILTRO POR FECHA DE INICIO
+     *  SCOPE FALTANTE PARA FILTRO POR FECHA DE INICIO
      */
     public function scopeByDateStart(Builder $query, string $date): Builder
     {
         return $query->whereDate('date_start', $date);
     }
 
-    // ✅ NUEVO MÉTODO: Crear egreso por gastos de viaje
+    //  NUEVO MÉTODO: Crear egreso por gastos de viaje
     public function createTravelExpenseEgress(): ?Egress
     {
         if ($this->travel_expenses <= 0) {
@@ -766,7 +766,7 @@ class Trip extends Model
         ]);
     }
 
-    // ✅ NUEVO MÉTODO: Sincronizar egreso con travel_expenses - MEJORADO
+    //  NUEVO MÉTODO: Sincronizar egreso con travel_expenses - MEJORADO
     public function syncTravelExpenseEgress(): void
     {
         $egress = $this->getTravelExpenseEgress();
@@ -796,7 +796,7 @@ class Trip extends Model
                 'new_amount' => $this->travel_expenses
             ]);
         } else {
-            // ✅ CREAR NUEVO EGRESO SOLO SI NO EXISTE
+            //  CREAR NUEVO EGRESO SOLO SI NO EXISTE
             $newEgress = $this->createTravelExpenseEgress();
             
             Log::info("Travel expense egress created during sync", [
@@ -807,7 +807,7 @@ class Trip extends Model
         }
     }
 
-    // ✅ NUEVO MÉTODO: Actualizar nombre del egreso
+    //  NUEVO MÉTODO: Actualizar nombre del egreso
     public function updateTravelExpenseEgressName(): void
     {
         $egress = $this->getTravelExpenseEgress();
@@ -820,7 +820,7 @@ class Trip extends Model
         }
     }
 
-    // ✅ NUEVO MÉTODO: Obtener egreso de gastos de viaje
+    //  NUEVO MÉTODO: Obtener egreso de gastos de viaje
     public function getTravelExpenseEgress(): ?Egress
     {
         return $this->egresses()
@@ -828,7 +828,7 @@ class Trip extends Model
             ->first();
     }
 
-    // ✅ NUEVO MÉTODO: Soft delete del egreso
+    //  NUEVO MÉTODO: Soft delete del egreso
     public function softDeleteTravelExpenseEgress(): void
     {
         $egress = $this->getTravelExpenseEgress();
@@ -842,7 +842,7 @@ class Trip extends Model
         }
     }
 
-    // ✅ NUEVO MÉTODO: Force delete del egress
+    //  NUEVO MÉTODO: Force delete del egress
     public function forceDeleteTravelExpenseEgress(): void
     {
         $egress = Egress::withTrashed()
@@ -859,7 +859,7 @@ class Trip extends Model
         }
     }
 
-    // ✅ VERSIÓN CON SECUENCIAL ÚNICO
+    //  VERSIÓN CON SECUENCIAL ÚNICO
     public function generateEgressCode(): string
     {
         if (strpos($this->code, 'TEMP-') === 0) {
@@ -874,7 +874,7 @@ class Trip extends Model
         return "EGR-TRP{$this->id}-{$dateCode}-{$sequential}";
     }
 
-    // ✅ MÉTODO AUXILIAR: Obtener siguiente secuencial para egresos de este trip
+    //  MÉTODO AUXILIAR: Obtener siguiente secuencial para egresos de este trip
     private function getNextEgressSequential(): string
     {
         $lastEgress = Egress::where('trip_id', $this->id)
@@ -894,7 +894,7 @@ class Trip extends Model
         return str_pad($lastNumber + 1, 2, '0', STR_PAD_LEFT);
     }
 
-    // ✅ NUEVO MÉTODO: Verificar si puede ser eliminado (actualizado)
+    //  NUEVO MÉTODO: Verificar si puede ser eliminado (actualizado)
     public function canBeDeleted(): bool
     {
         // Contar transacciones activas
@@ -905,7 +905,7 @@ class Trip extends Model
             ->where('name', 'NOT LIKE', 'Gastos de viaje - %')
             ->count();
         
-        // ✅ LOG PARA DIAGNÓSTICO
+        //  LOG PARA DIAGNÓSTICO
         \Log::info("Checking if trip can be deleted", [
             'trip_id' => $this->id,
             'active_transactions' => $activeTransactions,
@@ -917,7 +917,7 @@ class Trip extends Model
         return $activeTransactions === 0 && $activeEgresses === 0;
     }
 
-    // ✅ CORREGIR MÉTODO: Obtener detalles de dependencias - CON MEJOR MANEJO DE ERRORES
+    //  CORREGIR MÉTODO: Obtener detalles de dependencias - CON MEJOR MANEJO DE ERRORES
     public function getDependenciesDetails(): array
     {
         try {
@@ -966,7 +966,7 @@ class Trip extends Model
         }
     }
 
-    // ✅ MÉTODO ESTÁTICO: Generar código único global
+    //  MÉTODO ESTÁTICO: Generar código único global
     public static function generateUniqueCode(): string
     {
         do {
@@ -976,7 +976,7 @@ class Trip extends Model
         return $code;
     }
 
-    // ✅ MÉTODO TEMPORAL: Force delete sin validaciones
+    //  MÉTODO TEMPORAL: Force delete sin validaciones
     public function forceDeleteWithoutValidations(): bool
     {
         return DB::transaction(function () {
@@ -1006,7 +1006,7 @@ class Trip extends Model
         });
     }
 
-    // ✅ AGREGAR MÉTODO FALTANTE: generateCode()
+    //  AGREGAR MÉTODO FALTANTE: generateCode()
     public function generateCode(): string
     {
         $year = $this->date_start->format('y'); // 25 para 2025
@@ -1021,7 +1021,7 @@ class Trip extends Model
         return "TRP-{$year}{$month}{$day}-" . str_pad($sequential, 3, '0', STR_PAD_LEFT);
     }
 
-    // ✅ MÉTODO AUXILIAR: Obtener siguiente secuencial para una fecha
+    //  MÉTODO AUXILIAR: Obtener siguiente secuencial para una fecha
     private function getNextSequentialForDate(string $date): string
     {
         $lastTrip = static::where('date_start', $date)

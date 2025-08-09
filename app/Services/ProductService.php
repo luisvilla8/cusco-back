@@ -61,7 +61,7 @@ class ProductService
     {
         $this->logInfo('Creating new product', ['data' => Arr::except($data, ['image'])]);
 
-        // ✅ PROCESAR IMAGEN SI EXISTE - CON MEJOR MANEJO DE ERRORES
+        //  PROCESAR IMAGEN SI EXISTE - CON MEJOR MANEJO DE ERRORES
         if (isset($data['image']) && $data['image'] instanceof UploadedFile) {
             try {
                 $this->logInfo('Processing product image', ['has_image' => true]);
@@ -79,12 +79,12 @@ class ProductService
             unset($data['image']); // Remover el archivo del array
         }
 
-        // ✅ VALIDAR QUE TODOS LOS CAMPOS ESTÉN PRESENTES
+        //  VALIDAR QUE TODOS LOS CAMPOS ESTÉN PRESENTES
         $this->logInfo('Data before create', $data);
 
         $product = $this->productRepository->create($data);
         
-        // ✅ LOG DESPUÉS DE CREAR
+        //  LOG DESPUÉS DE CREAR
         $this->logInfo('Product created in database', [
             'product_id' => $product->id,
             'image_url_saved' => $product->image_url,
@@ -107,7 +107,7 @@ class ProductService
      */
     public function updateProduct(int $id, array $data): array
     {
-        // ✅ CAMBIAR array_except() POR Arr::except()
+        //  CAMBIAR array_except() POR Arr::except()
         $this->logInfo('Updating product', ['product_id' => $id, 'data' => Arr::except($data, ['image'])]);
 
         $product = $this->productRepository->findActiveWithRelations($id);
@@ -116,7 +116,7 @@ class ProductService
             return ResponseHelper::notFound('Producto no encontrado o ha sido eliminado');
         }
 
-        // ✅ PROCESAR IMAGEN SI EXISTE
+        //  PROCESAR IMAGEN SI EXISTE
         if (isset($data['image']) && $data['image'] instanceof UploadedFile) {
             try {
                 // Eliminar imagen anterior si existe
@@ -134,7 +134,7 @@ class ProductService
             unset($data['image']);
         }
 
-        // ✅ ELIMINAR IMAGEN SI SE SOLICITA
+        //  ELIMINAR IMAGEN SI SE SOLICITA
         if (isset($data['remove_image']) && $data['remove_image'] && $product->image_url) {
             try {
                 $this->imageService->deleteProductImage($product->image_url);
@@ -257,7 +257,7 @@ class ProductService
 
         $productName = $product->name;
 
-        // ✅ ELIMINAR IMAGEN SI EXISTE
+        //  ELIMINAR IMAGEN SI EXISTE
         if ($product->image_url) {
             try {
                 $this->imageService->deleteProductImage($product->image_url);
