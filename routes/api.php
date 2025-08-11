@@ -15,13 +15,12 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::prefix('v1')->group(function () {
-    
+
     // Rutas públicas (sin autenticación)
     require __DIR__ . '/api/v1/public.php';
-    
+
     // Rutas protegidas (con autenticación)
-    Route::middleware('api.auth')->group(function () {
+    Route::middleware(['api.auth', 'role'])->group(function () {
         require __DIR__ . '/api/v1/protected.php';
     });
-    
 });

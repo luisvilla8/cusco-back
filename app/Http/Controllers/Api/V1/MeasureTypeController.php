@@ -3,11 +3,15 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Attributes\Role;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\MeasureType\{StoreMeasureTypeRequest, UpdateMeasureTypeRequest, IndexMeasureTypeRequest};
 use App\Services\MeasureTypeService;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
+
+
+#[Role(['Administrador'])]
 
 class MeasureTypeController extends Controller
 {
@@ -20,6 +24,8 @@ class MeasureTypeController extends Controller
     /**
      * Get all measure types with pagination
      */
+    #[Role(['Administrador', 'Vendedor'])]
+
     public function index(IndexMeasureTypeRequest $request): JsonResponse
     {
         $result = $this->measureTypeService->getAllMeasureTypes($request->validated());
@@ -29,6 +35,8 @@ class MeasureTypeController extends Controller
     /**
      * Get single measure type
      */
+    #[Role(['Administrador', 'Vendedor'])]
+
     public function show(int $id): JsonResponse
     {
         $result = $this->measureTypeService->getMeasureType($id);
@@ -74,6 +82,8 @@ class MeasureTypeController extends Controller
     /**
      * Get measure types list for dropdown
      */
+    #[Role(['Administrador', 'Vendedor'])]
+
     public function list(): JsonResponse
     {
         $result = $this->measureTypeService->getMeasureTypesList();

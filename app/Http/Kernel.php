@@ -70,6 +70,8 @@ class Kernel extends HttpKernel
 
         // NUEVO: Middleware para validar ID numérico
         'validate.numeric.id' => \App\Http\Middleware\ValidateNumericId::class,
+        // NUEVO: Middleware para roles de usuario
+        'role' => \App\Http\Middleware\RoleMiddleware::class,
     ];
 
     /**
@@ -94,5 +96,11 @@ class Kernel extends HttpKernel
 
         // ✅ NUEVO: Middleware personalizado para API
         'api.auth' => \App\Http\Middleware\ApiAuthMiddleware::class,
+
+        // NUEVO: Middleware para validar ID numérico
+        'validate.numeric.id' => \App\Http\Middleware\ValidateNumericId::class,
+
+        // NUEVO: Middleware para roles de usuario
+        'role' => \App\Http\Middleware\RoleMiddleware::class,
     ];
 }

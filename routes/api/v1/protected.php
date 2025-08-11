@@ -230,14 +230,11 @@ Route::prefix('transactions')->name('transactions.')->group(function () {
     //  APLICAR MIDDLEWARE SOLO A RUTAS CON ID
     Route::middleware('validate.numeric.id')->group(function () {
         Route::get('{id}', [TransactionController::class, 'show'])->name('show');
-        Route::get('{id}/dependencies', [TransactionController::class, 'dependencies'])->name('dependencies');
         
         //  NUEVA RUTA: Obtener datos para crear devolución
         Route::get('{id}/return-data', [TransactionController::class, 'getReturnData'])->name('return-data');
         
         Route::put('{id}', [TransactionController::class, 'update'])->name('update');
-        Route::delete('{id}', [TransactionController::class, 'destroy'])->name('destroy');
-        Route::delete('{id}/force', [TransactionController::class, 'forceDelete'])->name('force-delete');
         
         //  ACCIONES ESPECÍFICAS DE TRANSACCIONES
         Route::patch('{id}/deliver', [TransactionController::class, 'markAsDelivered'])->name('deliver');

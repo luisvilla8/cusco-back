@@ -3,6 +3,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Attributes\Role;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\ProductPriceDetail\{
     IndexProductPriceDetailRequest,
@@ -13,6 +14,8 @@ use App\Services\ProductPriceDetailService;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
 
+
+#[Role(['Administrador'])]
 class ProductPriceDetailController extends Controller
 {
     use ApiResponseTrait;
@@ -24,6 +27,8 @@ class ProductPriceDetailController extends Controller
     /**
      *  OBTENER PRECIOS AGRUPADOS POR PRODUCTO (PRINCIPAL)
      */
+    #[Role(['Administrador', 'Vendedor'])]
+
     public function index(IndexProductPriceDetailRequest $request): JsonResponse
     {
         $result = $this->service->getAllPriceDetails($request->validated());
@@ -33,6 +38,8 @@ class ProductPriceDetailController extends Controller
     /**
      *  OBTENER LISTA PLANA DE PRECIOS
      */
+    #[Role(['Administrador', 'Vendedor'])]
+
     public function flat(IndexProductPriceDetailRequest $request): JsonResponse
     {
         $result = $this->service->getFlatPriceDetailsList($request->validated());
@@ -42,6 +49,8 @@ class ProductPriceDetailController extends Controller
     /**
      *  OBTENER PRECIO ESPECÍFICO
      */
+    #[Role(['Administrador', 'Vendedor'])]
+
     public function show(int $id): JsonResponse
     {
         $result = $this->service->getPriceDetail($id);
@@ -69,6 +78,8 @@ class ProductPriceDetailController extends Controller
     /**
      *  OBTENER PRECIOS POR ZONAS DE UN PRODUCTO ESPECÍFICO
      */
+    #[Role(['Administrador', 'Vendedor'])]
+
     public function getProductZonePrices(int $productId): JsonResponse
     {
         $result = $this->service->getProductZonePrices($productId);
@@ -114,6 +125,8 @@ class ProductPriceDetailController extends Controller
     /**
      *  LISTA PARA DROPDOWNS
      */
+    #[Role(['Administrador', 'Vendedor'])]
+
     public function list(): JsonResponse
     {
         $result = $this->service->getPriceDetailsList();

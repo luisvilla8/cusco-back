@@ -7,31 +7,17 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class StoreTripRequest extends FormRequest
 {
-    /**
-     *  PERMITIR A VENDEDORES Y ADMINISTRADORES CREAR TRIPS
-     */
     public function authorize(): bool
     {
-        $user = $this->user();
-        
-        // Verificar que el usuario esté autenticado
-        if (!$user) {
-            return false;
-        }
-        
-        //  PERMITIR A VENDEDORES Y ADMINISTRADORES
-        return $user->hasAnyRole(['Administrador', 'Super Admin', 'Vendedor']);
+        return true; 
     }
 
-    /**
-     *  REGLAS DE VALIDACIÓN - SIMPLIFICADAS
-     */
     public function rules(): array
     {
         return [
             'agent_id' => 'required|integer|exists:agents,id',
             'zone_id' => 'required|integer|exists:zones,id',
-            'user_id' => 'nullable|integer|exists:users,id', //  SIEMPRE OPCIONAL
+            'user_id' => 'nullable|integer|exists:users,id',
             'name' => 'required|string|max:255',
             'description' => 'nullable|string|max:1000',
             'travel_expenses' => 'required|numeric|min:0',
@@ -40,9 +26,6 @@ class StoreTripRequest extends FormRequest
         ];
     }
 
-    /**
-     *  MENSAJES DE ERROR PERSONALIZADOS
-     */
     public function messages(): array
     {
         return [
@@ -61,15 +44,12 @@ class StoreTripRequest extends FormRequest
         ];
     }
 
-    /**
-     *  VALIDACIÓN SIMPLIFICADA - SOLO ZONA PARA VENDEDORES
-     */
+    //  MANTENER SOLO VALIDACIONES DE NEGOCIO
     public function withValidator($validator)
     {
         $validator->after(function ($validator) {
             $user = $this->user();
             
-            //  VALIDACIÓN DE ZONA PARA VENDEDORES
             if ($user->hasRole('Vendedor')) {
                 $zoneId = $this->input('zone_id');
                 
@@ -79,14 +59,12 @@ class StoreTripRequest extends FormRequest
                     $validator->errors()->add('zone_id', "No tienes permisos para crear viajes en la zona: {$zoneName}");
                 }
                 
-                //  VENDEDORES NO PUEDEN ASIGNAR OTROS USUARIOS
                 $assignedUserId = $this->input('user_id');
                 if ($assignedUserId && $assignedUserId !== $user->id) {
                     $validator->errors()->add('user_id', 'Los vendedores solo pueden crear viajes para sí mismos.');
                 }
             }
             
-            //  VALIDAR QUE EL USUARIO ASIGNADO TENGA ACCESO A LA ZONA
             $assignedUserId = $this->input('user_id');
             $zoneId = $this->input('zone_id');
             
@@ -100,7 +78,6 @@ class StoreTripRequest extends FormRequest
                 }
             }
             
-            //  VALIDAR FECHAS LÓGICAS
             $dateStart = $this->input('date_start');
             $dateEnd = $this->input('date_end');
             

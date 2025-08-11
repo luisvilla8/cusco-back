@@ -3,6 +3,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Attributes\Role;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Trip\{IndexTripRequest, StoreTripRequest, UpdateTripRequest};
 use App\Services\TripService;
@@ -10,6 +11,7 @@ use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
 use App\Models\Trip; // Asegúrate de tener el modelo Trip importado
 
+#[Role(['Administrador', 'Vendedor'], 'Solo administradores y vendedores tienen acceso a viajes')]
 class TripController extends Controller
 {
     use ApiResponseTrait;
@@ -19,7 +21,7 @@ class TripController extends Controller
     ) {}
 
     /**
-     * ✅ LISTAR TRIPS (con filtros y permisos)
+     *  LISTAR TRIPS (con filtros y permisos)
      */
     public function index(IndexTripRequest $request): JsonResponse
     {
@@ -28,7 +30,7 @@ class TripController extends Controller
     }
 
     /**
-     * ✅ MOSTRAR TRIP ESPECÍFICO (con permisos)
+     *  MOSTRAR TRIP ESPECÍFICO (con permisos)
      */
     public function show(int $id): JsonResponse
     {
@@ -37,7 +39,7 @@ class TripController extends Controller
     }
 
     /**
-     * ✅ CREAR TRIP
+     *  CREAR TRIP
      */
     public function store(StoreTripRequest $request): JsonResponse
     {
@@ -46,7 +48,7 @@ class TripController extends Controller
     }
 
     /**
-     * ✅ ACTUALIZAR TRIP (con permisos)
+     *  ACTUALIZAR TRIP (con permisos)
      */
     public function update(UpdateTripRequest $request, int $id): JsonResponse
     {
@@ -55,7 +57,7 @@ class TripController extends Controller
     }
 
     /**
-     * ✅ ELIMINAR TRIP (con permisos)
+     *  ELIMINAR TRIP (con permisos)
      */
     public function destroy(int $id): JsonResponse
     {
@@ -64,7 +66,7 @@ class TripController extends Controller
     }
 
     /**
-     * ✅ ELIMINAR TRIP PERMANENTEMENTE (con permisos)
+     *  ELIMINAR TRIP PERMANENTEMENTE (con permisos)
      */
     public function forceDelete(int $id): JsonResponse
     {
@@ -73,7 +75,7 @@ class TripController extends Controller
     }
 
     /**
-     * ✅ LISTA PARA DROPDOWNS (con permisos)
+     *  LISTA PARA DROPDOWNS (con permisos)
      */
     public function list(): JsonResponse
     {
@@ -82,23 +84,23 @@ class TripController extends Controller
     }
 
     /**
-     * ✅ NUEVO: DIAGNOSTICAR DEPENDENCIAS DE UN TRIP
+     *  NUEVO: DIAGNOSTICAR DEPENDENCIAS DE UN TRIP
      */
     public function dependencies(int $id): JsonResponse
     {
         try {
             $trip = Trip::withTrashed()->with(['transactions', 'egresses'])->find($id);
-            
+
             if (!$trip) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Viaje no encontrado'
                 ], 404);
             }
-            
+
             $dependencies = $trip->getDependenciesDetails();
             $canDelete = $trip->canBeDeleted();
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Dependencias del viaje obtenidas',
@@ -113,7 +115,6 @@ class TripController extends Controller
                     'dependencies' => $dependencies
                 ]
             ], 200);
-            
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -123,23 +124,23 @@ class TripController extends Controller
     }
 
     /**
-     * ✅ TEMPORAL: Force delete sin validaciones - CORREGIDO
+     *  TEMPORAL: Force delete sin validaciones - CORREGIDO
      */
     public function forceDeleteDirect(int $id): JsonResponse
     {
         try {
             $trip = Trip::withTrashed()->find($id);
-            
+
             if (!$trip) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Viaje no encontrado'
                 ], 404);
             }
-            
+
             $tripName = $trip->name;
             $success = $trip->forceDeleteWithoutValidations();
-            
+
             if ($success) {
                 return response()->json([
                     'success' => true,
@@ -156,13 +157,12 @@ class TripController extends Controller
                     'message' => 'Error al eliminar el viaje'
                 ], 500);
             }
-            
         } catch (\Exception $e) {
             \Log::error('Error in direct force delete', [
                 'trip_id' => $id,
                 'error' => $e->getMessage()
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Error al eliminar: ' . $e->getMessage()

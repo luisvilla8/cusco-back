@@ -19,7 +19,7 @@ class RoleSeeder extends Seeder
                 // code se genera automáticamente: "ADMIN"
             ],
             [
-                'name' => 'Vendedor',  // ✅ AGREGAR ESTE ROL
+                'name' => 'Vendedor',  
                 'description' => 'Personal de ventas en tienda'
                 // code se genera automáticamente: "VEND"
             ],
@@ -27,17 +27,7 @@ class RoleSeeder extends Seeder
                 'name' => 'Agente',
                 'description' => 'Agente de ventas en campo'
                 // code se genera automáticamente: "AGENT"
-            ],
-            [
-                'name' => 'Usuario',
-                'description' => 'Usuario básico del sistema'
-                // code se genera automáticamente: "USER"
-            ],
-            [
-                'name' => 'Supervisor',
-                'description' => 'Supervisor de operaciones'
-                // code se genera automáticamente: "SUPER"
-            ],
+            ]
         ];
 
         foreach ($roles as $role) {

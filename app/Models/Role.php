@@ -92,9 +92,9 @@ class Role extends Model
         // Abreviaciones comunes para roles
         $abbreviations = [
             'ADMINISTRADOR' => 'ADMIN',
+            'VENDEDOR' => 'VEND',
             'AGENTE' => 'AGENT',
             'USUARIO' => 'USER',
-            'SUPERVISOR' => 'SUPER',
         ];
 
         $baseName = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $this->name));

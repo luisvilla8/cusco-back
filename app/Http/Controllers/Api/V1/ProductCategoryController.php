@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Attributes\Role;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\ProductCategory\{StoreProductCategoryRequest, UpdateProductCategoryRequest, IndexProductCategoryRequest};
 use App\Services\ProductCategoryService;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
 
+
+#[Role(['Administrador'])]
 class ProductCategoryController extends Controller
 {
     use ApiResponseTrait;
@@ -19,6 +22,8 @@ class ProductCategoryController extends Controller
     /**
      * Get all product categories with pagination
      */
+    #[Role(['Administrador', 'Vendedor'])]
+
     public function index(IndexProductCategoryRequest $request): JsonResponse
     {
         $result = $this->productCategoryService->getAllProductCategories($request->validated());
@@ -28,6 +33,8 @@ class ProductCategoryController extends Controller
     /**
      * Get single product category
      */
+    #[Role(['Administrador', 'Vendedor'])]
+
     public function show(int $id): JsonResponse
     {
         $result = $this->productCategoryService->getProductCategory($id);
@@ -73,6 +80,8 @@ class ProductCategoryController extends Controller
     /**
      * Get product categories list for dropdown
      */
+    #[Role(['Administrador', 'Vendedor'])]
+
     public function list(): JsonResponse
     {
         $result = $this->productCategoryService->getProductCategoriesList();

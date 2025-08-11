@@ -3,12 +3,15 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Attributes\Role;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\User\{IndexUserRequest, StoreUserRequest, UpdateUserRequest};
 use App\Services\UserService;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
 
+
+#[Role(['Administrador'])]
 class UserController extends Controller
 {
     use ApiResponseTrait;
@@ -29,6 +32,7 @@ class UserController extends Controller
     /**
      * Obtener un usuario específico
      */
+    #[Role(['Administrador', 'Vendedor', 'Agente'], 'No tienes permisos para ver este usuario')]
     public function show(int $id): JsonResponse
     {
         $result = $this->userService->getUser($id);
@@ -38,6 +42,7 @@ class UserController extends Controller
     /**
      * Obtener lista de usuarios para dropdowns
      */
+    #[Role(['Administrador', 'Vendedor'], 'Solo administradores y vendedores pueden ver la lista de usuarios')]
     public function list(): JsonResponse
     {
         $result = $this->userService->getUsersList();
@@ -79,5 +84,4 @@ class UserController extends Controller
         $result = $this->userService->forceDeleteUser($id);
         return $this->handleServiceResult($result);
     }
-
 }

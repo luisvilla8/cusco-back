@@ -9,10 +9,7 @@ class StoreReturnRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        $user = $this->user();
-        if (!$user) return false;
-
-        return $user->hasAnyRole(['Administrador', 'Super Admin', 'Vendedor']);
+        return true; 
     }
 
     public function rules(): array

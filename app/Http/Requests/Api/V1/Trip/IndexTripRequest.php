@@ -7,11 +7,6 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class IndexTripRequest extends FormRequest
 {
-    public function authorize(): bool
-    {
-        return true;
-    }
-
     public function rules(): array
     {
         return [
@@ -43,18 +38,18 @@ class IndexTripRequest extends FormRequest
     }
 
     /**
-     * ✅ PREPARAR DATOS - SIGUIENDO PATRÓN DE USER
+     *  PREPARAR DATOS - SIGUIENDO PATRÓN DE USER
      */
     protected function prepareForValidation()
     {
         $user = auth()->user();
         
-        // ✅ VERIFICACIÓN SIMPLE como en User
+        //  VERIFICACIÓN SIMPLE como en User
         if (!$user || !$user->role_id) {
             return;
         }
         
-        // ✅ VERIFICAR ROL SIN USAR load() - usando relación directa
+        //  VERIFICAR ROL SIN USAR load() - usando relación directa
         $userRole = $user->role; // Esto carga automáticamente si no está cargado
         
         // Si no es admin, quitar filtro de user_id

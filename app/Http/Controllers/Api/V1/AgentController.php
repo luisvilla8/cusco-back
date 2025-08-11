@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Attributes\Role;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Agent\{StoreAgentRequest, UpdateAgentRequest, IndexAgentRequest};
 use App\Services\AgentService;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
 
+
+#[Role(['Administrador', 'Vendedor'], 'Solo administradores y vendedores pueden ver la lista de agentes')]
 class AgentController extends Controller
 {
     use ApiResponseTrait;
